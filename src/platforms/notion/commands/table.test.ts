@@ -197,16 +197,7 @@ describe('tableCommand', () => {
       try {
         // When
         await tableCommand.parseAsync(
-          [
-            'create',
-            'parent-1',
-            '--workspace-id',
-            'space-123',
-            '--headers',
-            'A,B',
-            '--rows',
-            '[["1","2","3"]]',
-          ],
+          ['create', 'parent-1', '--workspace-id', 'space-123', '--headers', 'A,B', '--rows', '[["1","2","3"]]'],
           { from: 'user' },
         )
       } catch {

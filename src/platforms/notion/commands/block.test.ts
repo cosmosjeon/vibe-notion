@@ -1767,7 +1767,14 @@ describe('blockCommand', () => {
       try {
         // When: update without properties (e.g., changing format)
         await blockCommand.parseAsync(
-          ['update', 'block-123', '--workspace-id', 'space-123', '--content', JSON.stringify({ format: { width: 100 } })],
+          [
+            'update',
+            'block-123',
+            '--workspace-id',
+            'space-123',
+            '--content',
+            JSON.stringify({ format: { width: 100 } }),
+          ],
           { from: 'user' },
         )
       } catch {

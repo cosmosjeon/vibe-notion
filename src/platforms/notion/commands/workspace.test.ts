@@ -204,9 +204,7 @@ describe('WorkspaceCommand', () => {
               'user-1': {
                 value: {
                   value: {
-                    space_view_pointers: [
-                      { id: 'view-2', table: 'space_view', spaceId: 'space-2' },
-                    ],
+                    space_view_pointers: [{ id: 'view-2', table: 'space_view', spaceId: 'space-2' }],
                   },
                   role: 'editor',
                 },
