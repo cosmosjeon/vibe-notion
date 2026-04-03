@@ -75,6 +75,72 @@ describe('blockCommand', () => {
       expect(result.parent_id).toBe('parent-1')
     })
 
+    test('retrieves block value from v3 nested record format', async () => {
+      // Given
+      const mockInternalRequest = mock((_token: string, endpoint: string) => {
+        if (endpoint === 'syncRecordValues') {
+          return Promise.resolve({
+            recordMap: {
+              block: {
+                'block-123': {
+                  value: {
+                    value: {
+                      id: 'block-123',
+                      type: 'text',
+                      version: 1,
+                      parent_id: 'parent-1',
+                      space_id: 'space-1',
+                      alive: true,
+                    },
+                    role: 'editor',
+                  },
+                },
+              },
+            },
+          })
+        }
+        return Promise.resolve({})
+      })
+      const mockGetCredentials = mock(() => Promise.resolve({ token_v2: 'test-token', space_id: 'space-123' }))
+      const mockResolveSpaceId = mock(() => Promise.resolve('space-123'))
+      const mockGenerateId = mock(() => 'mock-uuid')
+
+      mock.module('../client', () => ({
+        internalRequest: mockInternalRequest,
+      }))
+
+      mock.module('./helpers', () => ({
+        getCredentialsOrExit: mockGetCredentials,
+        generateId: mockGenerateId,
+        resolveSpaceId: mockResolveSpaceId,
+        resolveCollectionViewId: mock(() => Promise.resolve('view-123')),
+        resolveAndSetActiveUserId: mock(() => Promise.resolve()),
+        resolveBacklinkUsers: mock(async () => ({})),
+        resolveDefaultTeamId: mock(async () => undefined),
+      }))
+
+      const { blockCommand } = await import('./block')
+      const output: string[] = []
+      const originalLog = console.log
+      console.log = (msg: string) => output.push(msg)
+
+      try {
+        // When
+        await blockCommand.parseAsync(['get', 'block-123', '--workspace-id', 'space-123'], { from: 'user' })
+      } catch {
+        // Expected to exit
+      }
+
+      console.log = originalLog
+
+      // Then
+      expect(output.length).toBeGreaterThan(0)
+      const result = JSON.parse(output[0])
+      expect(result.id).toBe('block-123')
+      expect(result.type).toBe('text')
+      expect(result.parent_id).toBe('parent-1')
+    })
+
     test('errors when block not found', async () => {
       // Given
       const mockInternalRequest = mock((_token: string, endpoint: string) => {
@@ -1767,7 +1833,14 @@ describe('blockCommand', () => {
       try {
         // When: update without properties (e.g., changing format)
         await blockCommand.parseAsync(
-          ['update', 'block-123', '--workspace-id', 'space-123', '--content', JSON.stringify({ format: { width: 100 } })],
+          [
+            'update',
+            'block-123',
+            '--workspace-id',
+            'space-123',
+            '--content',
+            JSON.stringify({ format: { width: 100 } }),
+          ],
           { from: 'user' },
         )
       } catch {

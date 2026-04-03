@@ -14,6 +14,7 @@ import {
   formatBlockRecord,
   formatPageGet,
   formatRowProperties,
+  getRecordValue,
 } from '@/platforms/notion/formatters'
 import { uploadFileOnly } from '@/platforms/notion/upload'
 import { preprocessMarkdownImages } from '@/shared/markdown/preprocess-images'
@@ -93,7 +94,14 @@ type Operation = {
 const LOCAL_MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\((?![^)]+:\/\/)[^)]+\)/
 
 function pickBlock(response: SyncRecordValuesResponse, blockId: string): BlockRecord | undefined {
-  return response.recordMap.block[blockId] ?? Object.values(response.recordMap.block)[0]
+  const raw = response.recordMap.block[blockId] ?? Object.values(response.recordMap.block)[0]
+  if (!raw) return undefined
+  // Handle v3 nested format: { value: { value: {...}, role } }
+  const outer = raw.value as unknown as Record<string, unknown>
+  if (typeof outer?.role === 'string' && outer.value !== undefined) {
+    return { value: outer.value as BlockValue, role: outer.role as string }
+  }
+  return raw
 }
 
 type SpaceRecord = {
@@ -118,13 +126,14 @@ async function getSpace(tokenV2: string, spaceId: string): Promise<{ id: string;
   const spacesData = (await internalRequest(tokenV2, 'getSpaces', {})) as GetSpacesResponse
   const allSpaces = Object.values(spacesData).flatMap((entry) => Object.values(entry.space ?? {}))
 
-  const space = allSpaces.find((s) => s.value.id === spaceId)
-
-  if (!space) {
-    throw new Error(`Space not found: ${spaceId}`)
+  for (const raw of allSpaces) {
+    const value = getRecordValue(raw as unknown as Record<string, unknown>) as SpaceRecord['value'] | undefined
+    if (value?.id === spaceId) {
+      return { id: value.id, pages: value.pages ?? [] }
+    }
   }
 
-  return { id: space.value.id, pages: space.value.pages ?? [] }
+  throw new Error(`Space not found: ${spaceId}`)
 }
 
 function extractTitle(block: BlockValue): string {
@@ -151,9 +160,10 @@ async function walkPages(
 
   for (const pageId of pageIds) {
     const record = response.recordMap.block[pageId]
-    if (!record?.value) continue
+    if (!record) continue
 
-    const block = record.value
+    const block = getRecordValue(record as unknown as Record<string, unknown>)
+    if (!block) continue
     const type = (block.type as string) ?? 'unknown'
     const isPage = type === 'page' || type === 'collection_view_page' || type === 'collection_view'
 

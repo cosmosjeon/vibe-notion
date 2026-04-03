@@ -4790,3 +4790,69 @@ describe('database view-delete', () => {
     expect(errors[0]).toContain('Cannot delete the last view')
   })
 })
+
+describe('database get with v3 nested format', () => {
+  test('handles v3 nested collection record', async () => {
+    mock.restore()
+    // given
+    const mockResponse = {
+      recordMap: {
+        collection: {
+          'coll-1': {
+            value: {
+              value: {
+                id: 'coll-1',
+                name: [['V3 DB']],
+                schema: {
+                  title: { name: 'Name', type: 'title' },
+                  status: { name: 'Status', type: 'select' },
+                },
+                parent_id: 'block-1',
+                alive: true,
+                space_id: 'space-123',
+              },
+              role: 'editor',
+            },
+          },
+        },
+      },
+    }
+    const mockInternalRequest = mock(() => Promise.resolve(mockResponse))
+    const mockGetCredentials = mock(() => Promise.resolve({ token_v2: 'test-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-123'),
+      resolveCollectionViewId: mock(async () => 'view-123'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { databaseCommand } = await import('./database')
+
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      // when
+      await databaseCommand.parseAsync(['get', 'coll-1', '--workspace-id', 'space-123'], { from: 'user' })
+    } finally {
+      console.log = originalLog
+    }
+
+    // then
+    expect(output.length).toBeGreaterThan(0)
+    const parsed = JSON.parse(output[0])
+    expect(parsed.id).toBe('coll-1')
+    expect(parsed.name).toBe('V3 DB')
+    expect(parsed.schema.Name.type).toBe('title')
+    expect(parsed.schema.Status.type).toBe('select')
+  })
+})

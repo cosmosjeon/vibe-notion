@@ -27,10 +27,7 @@ async function runFile(file: string): Promise<void> {
     env: process.env,
   })
 
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
   const exitCode = await proc.exited
 
   // eslint-disable-next-line no-control-regex

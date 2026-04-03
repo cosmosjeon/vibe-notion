@@ -83,27 +83,114 @@ async function resolveSpaceId(tokenV2: string, blockId: string): Promise<string>
   return spaceId
 }
 
+function getRecordValue(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!record) return undefined
+  const outer = record.value as Record<string, unknown> | undefined
+  if (!outer) return undefined
+  if (typeof outer.role === 'string' && outer.value !== undefined) {
+    return outer.value as Record<string, unknown>
+  }
+  return outer
+}
+
 async function resolveCollectionViewId(tokenV2: string, collectionId: string): Promise<string> {
   const collResult = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'collection', id: collectionId }, version: -1 }],
-  })) as { recordMap: { collection: Record<string, { value: { parent_id: string } }> } }
+  })) as { recordMap: { collection: Record<string, Record<string, unknown>> } }
 
-  const coll = Object.values(collResult.recordMap.collection)[0]
-  if (!coll?.value?.parent_id) {
+  const collRaw = Object.values(collResult.recordMap.collection)[0]
+  const coll = getRecordValue(collRaw) as { parent_id?: string } | undefined
+  if (!coll?.parent_id) {
     throw new Error(`Collection not found: ${collectionId}`)
   }
 
-  const parentId = coll.value.parent_id
+  const parentId = coll.parent_id
   const blockResult = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
-  })) as { recordMap: { block: Record<string, { value: { view_ids?: string[] } }> } }
+  })) as { recordMap: { block: Record<string, Record<string, unknown>> } }
 
-  const parentBlock = Object.values(blockResult.recordMap.block)[0]
-  const viewId = parentBlock?.value?.view_ids?.[0]
+  const blockRaw = Object.values(blockResult.recordMap.block)[0]
+  const parentBlock = getRecordValue(blockRaw) as { view_ids?: string[] } | undefined
+  const viewId = parentBlock?.view_ids?.[0]
   if (!viewId) {
     throw new Error(`No views found for collection: ${collectionId}`)
   }
   return viewId
+}
+
+type TeamRecord = {
+  value?: {
+    id: string
+    name?: string
+    space_id: string
+    is_default?: boolean
+  }
+}
+
+type TeamSpaceEntry = {
+  team?: Record<string, TeamRecord>
+}
+
+async function resolveDefaultTeamId(tokenV2: string, workspaceId: string): Promise<string | undefined> {
+  const response = (await _mockInternalRequest(tokenV2, 'getSpaces', {})) as Record<string, TeamSpaceEntry>
+
+  for (const entry of Object.values(response)) {
+    if (!entry.team) continue
+    for (const team of Object.values(entry.team)) {
+      const value = getRecordValue(team as unknown as Record<string, unknown>) as TeamRecord['value'] | undefined
+      if (value?.space_id === workspaceId && value?.is_default) {
+        return value.id
+      }
+    }
+  }
+  return undefined
+}
+
+type UserRecord = { value?: { name?: string } }
+
+async function resolveBacklinkUsers(
+  tokenV2: string,
+  backlinksResponse: Record<string, unknown>,
+): Promise<Record<string, string>> {
+  const recordMap = backlinksResponse.recordMap as Record<string, unknown> | undefined
+  const blockMap = (recordMap?.block as Record<string, Record<string, unknown>> | undefined) ?? {}
+  const userIds = new Set<string>()
+
+  for (const record of Object.values(blockMap)) {
+    const value = getRecordValue(record)
+    if (!value) continue
+    const properties = value.properties as Record<string, unknown> | undefined
+    if (!properties) continue
+    const titleSegments = properties.title
+    if (!Array.isArray(titleSegments)) continue
+
+    for (const segment of titleSegments) {
+      if (!Array.isArray(segment) || segment.length < 2) continue
+      if (!Array.isArray(segment[1])) continue
+      for (const deco of segment[1]) {
+        if (Array.isArray(deco) && deco[0] === 'u' && typeof deco[1] === 'string') {
+          userIds.add(deco[1])
+        }
+      }
+    }
+  }
+
+  const ids = [...userIds]
+  if (ids.length === 0) return {}
+
+  const response = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
+    requests: ids.map((id) => ({ pointer: { table: 'notion_user', id }, version: -1 })),
+  })) as { recordMap: { notion_user?: Record<string, UserRecord> } }
+
+  const lookup: Record<string, string> = {}
+  const userMap = response.recordMap.notion_user ?? {}
+  for (const [id, record] of Object.entries(userMap)) {
+    const value = getRecordValue(record as unknown as Record<string, unknown>) as { name?: string } | undefined
+    if (value?.name) {
+      lookup[id] = value.name
+    }
+  }
+  return lookup
 }
 
 type SpaceViewPointer = {
@@ -692,5 +779,77 @@ describe('resolveAndSetActiveUserId', () => {
     await resolveAndSetActiveUserId('token', 'workspace-111')
 
     expect(activeUserIdAtGetSpacesCall).toBe('cred-user-123')
+  })
+})
+
+describe('resolveDefaultTeamId', () => {
+  test('returns team id from v3 nested team records', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        'user-1': {
+          team: {
+            'team-1': {
+              value: { value: { id: 'team-1', space_id: 'space-123', is_default: true }, role: 'editor' },
+            },
+          },
+        },
+      })
+    const result = await resolveDefaultTeamId('token', 'space-123')
+    expect(result).toBe('team-1')
+  })
+})
+
+describe('resolveCollectionViewId v3', () => {
+  test('returns view_id from v3 nested collection and block records', async () => {
+    let callCount = 0
+    _mockInternalRequest = () => {
+      callCount++
+      if (callCount === 1) {
+        return Promise.resolve({
+          recordMap: {
+            collection: {
+              'coll-123': { value: { value: { parent_id: 'block-456' }, role: 'editor' } },
+            },
+          },
+        })
+      }
+      return Promise.resolve({
+        recordMap: {
+          block: {
+            'block-456': { value: { value: { view_ids: ['view-789'] }, role: 'editor' } },
+          },
+        },
+      })
+    }
+    const result = await resolveCollectionViewId('token', 'coll-123')
+    expect(result).toBe('view-789')
+  })
+})
+
+describe('resolveBacklinkUsers', () => {
+  test('resolves user names from v3 nested user records', async () => {
+    const backlinksResponse = {
+      recordMap: {
+        block: {
+          'block-abc': {
+            value: {
+              properties: {
+                title: [['Hello ', [['u', 'user-1']]]],
+              },
+            },
+          },
+        },
+      },
+    }
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: {
+          notion_user: {
+            'user-1': { value: { value: { name: 'Alice' }, role: 'editor' } },
+          },
+        },
+      })
+    const result = await resolveBacklinkUsers('token', backlinksResponse)
+    expect(result).toEqual({ 'user-1': 'Alice' })
   })
 })

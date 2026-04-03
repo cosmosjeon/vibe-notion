@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { getActiveUserId, internalRequest, setActiveSpaceId, setActiveUserId } from '@/platforms/notion/client'
 import { CredentialManager, type NotionCredentials } from '@/platforms/notion/credential-manager'
-import { collectBacklinkUserIds } from '@/platforms/notion/formatters'
+import { collectBacklinkUserIds, getRecordValue } from '@/platforms/notion/formatters'
 import { TokenExtractor } from '@/platforms/notion/token-extractor'
 
 export type CommandOptions = { pretty?: boolean }
@@ -157,8 +157,9 @@ export async function resolveDefaultTeamId(tokenV2: string, workspaceId: string)
   for (const entry of Object.values(response)) {
     if (!entry.team) continue
     for (const team of Object.values(entry.team)) {
-      if (team.value?.space_id === workspaceId && team.value?.is_default) {
-        return team.value.id
+      const value = getRecordValue(team as unknown as Record<string, unknown>) as TeamRecord['value'] | undefined
+      if (value?.space_id === workspaceId && value?.is_default) {
+        return value.id
       }
     }
   }
@@ -168,20 +169,22 @@ export async function resolveDefaultTeamId(tokenV2: string, workspaceId: string)
 export async function resolveCollectionViewId(tokenV2: string, collectionId: string): Promise<string> {
   const collResult = (await internalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'collection', id: collectionId }, version: -1 }],
-  })) as { recordMap: { collection: Record<string, { value: { parent_id: string } }> } }
+  })) as { recordMap: { collection: Record<string, Record<string, unknown>> } }
 
-  const coll = Object.values(collResult.recordMap.collection)[0]
-  if (!coll?.value?.parent_id) {
+  const collRaw = Object.values(collResult.recordMap.collection)[0]
+  const coll = getRecordValue(collRaw) as { parent_id?: string } | undefined
+  if (!coll?.parent_id) {
     throw new Error(`Collection not found: ${collectionId}`)
   }
 
-  const parentId = coll.value.parent_id
+  const parentId = coll.parent_id
   const blockResult = (await internalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
-  })) as { recordMap: { block: Record<string, { value: { view_ids?: string[] } }> } }
+  })) as { recordMap: { block: Record<string, Record<string, unknown>> } }
 
-  const parentBlock = Object.values(blockResult.recordMap.block)[0]
-  const viewId = parentBlock?.value?.view_ids?.[0]
+  const blockRaw = Object.values(blockResult.recordMap.block)[0]
+  const parentBlock = getRecordValue(blockRaw) as { view_ids?: string[] } | undefined
+  const viewId = parentBlock?.view_ids?.[0]
   if (!viewId) {
     throw new Error(`No views found for collection: ${collectionId}`)
   }
@@ -204,8 +207,9 @@ export async function resolveBacklinkUsers(
   const lookup: Record<string, string> = {}
   const userMap = response.recordMap.notion_user ?? {}
   for (const [id, record] of Object.entries(userMap)) {
-    if (record.value?.name) {
-      lookup[id] = record.value.name
+    const value = getRecordValue(record as unknown as Record<string, unknown>) as { name?: string } | undefined
+    if (value?.name) {
+      lookup[id] = value.name
     }
   }
   return lookup
