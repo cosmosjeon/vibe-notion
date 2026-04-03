@@ -2139,4 +2139,167 @@ describe('PageCommand', () => {
     const result = JSON.parse(output[0])
     expect(result.archived).toBe(true)
   })
+
+  test('page list handles v3 nested space and block records', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string) => {
+      if (endpoint === 'getSpaces') {
+        return {
+          'user-1': {
+            space: {
+              'space-123': {
+                value: {
+                  value: {
+                    id: 'space-123',
+                    name: 'V3 Space',
+                    pages: ['page-v3-1', 'page-v3-2'],
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+      if (endpoint === 'syncRecordValues') {
+        return {
+          recordMap: {
+            block: {
+              'page-v3-1': {
+                value: {
+                  value: {
+                    id: 'page-v3-1',
+                    type: 'page',
+                    alive: true,
+                    properties: {
+                      title: [['V3 Page One']],
+                    },
+                  },
+                  role: 'editor',
+                },
+              },
+              'page-v3-2': {
+                value: {
+                  value: {
+                    id: 'page-v3-2',
+                    type: 'page',
+                    alive: true,
+                    properties: {
+                      title: [['V3 Page Two']],
+                    },
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+      return {}
+    })
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mock(async () => ({ token_v2: 'test-token' })),
+      generateId: mock(() => 'uuid-1'),
+      resolveSpaceId: mock(async () => 'space-123'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { pageCommand } = await import('./page')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await pageCommand.parseAsync(['list', '--workspace-id', 'space-123'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(Array.isArray(result.pages)).toBe(true)
+    expect(result.pages.length).toBe(2)
+    expect(result.pages[0].id).toBe('page-v3-1')
+    expect(result.pages[0].title).toBe('V3 Page One')
+    expect(result.pages[0].type).toBe('page')
+    expect(result.pages[1].id).toBe('page-v3-2')
+    expect(result.pages[1].title).toBe('V3 Page Two')
+    expect(result.total).toBe(2)
+  })
+
+  test('page create handles v3 nested block response', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string) => {
+      if (endpoint === 'saveTransactions') {
+        return {}
+      }
+      if (endpoint === 'syncRecordValues') {
+        return {
+          recordMap: {
+            block: {
+              'uuid-v3': {
+                value: {
+                  value: {
+                    id: 'uuid-v3',
+                    type: 'page',
+                    parent_id: 'parent-page',
+                    space_id: 'space-123',
+                    properties: {
+                      title: [['V3 New Page']],
+                    },
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+      return {}
+    })
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mock(async () => ({ token_v2: 'test-token' })),
+      generateId: mock(() => 'uuid-v3'),
+      resolveSpaceId: mock(async () => 'space-123'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { pageCommand } = await import('./page')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await pageCommand.parseAsync(
+        ['create', '--workspace-id', 'space-123', '--parent', 'parent-page', '--title', 'V3 New Page'],
+        { from: 'user' },
+      )
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.id).toBe('uuid-v3')
+    expect(result.type).toBe('page')
+    expect(result.title).toBe('V3 New Page')
+  })
 })

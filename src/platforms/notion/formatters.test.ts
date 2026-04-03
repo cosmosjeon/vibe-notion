@@ -925,6 +925,30 @@ describe('formatBlockRecord', () => {
       type: 'page',
     })
   })
+
+  test('formats a v3 nested record with role inside value', () => {
+    // Given
+    const record = {
+      value: {
+        value: {
+          id: 'nested-1',
+          type: 'page',
+          properties: { title: [['Nested Page']] },
+        },
+        role: 'editor',
+      },
+    }
+
+    // When
+    const result = formatBlockRecord(record)
+
+    // Then
+    expect(result).toEqual({
+      id: 'nested-1',
+      title: 'Nested Page',
+      type: 'page',
+    })
+  })
 })
 
 describe('simplifyCollectionSchema', () => {

@@ -539,4 +539,217 @@ describe('UserCommand', () => {
     expect(errorMsg.error).toBe('Failed to load user content')
     expect(exitCode).toBe(1)
   })
+
+  test('user get handles v3 nested record format', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: any) => {
+      if (endpoint === 'syncRecordValues') {
+        expect(body.requests[0].pointer.table).toBe('notion_user')
+        expect(body.requests[0].pointer.id).toBe('user-id-123')
+        return {
+          recordMap: {
+            notion_user: {
+              'user-id-123': {
+                value: {
+                  value: {
+                    id: 'user-id-123',
+                    name: 'Charlie',
+                    email: 'charlie@example.com',
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'test-token',
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { userCommand } = await import('./user')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await userCommand.parseAsync(['get', 'user-id-123', '--workspace-id', 'space-123'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.id).toBe('user-id-123')
+    expect(result.name).toBe('Charlie')
+    expect(result.email).toBe('charlie@example.com')
+  })
+
+  test('user me handles v3 nested record format', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string) => {
+      if (endpoint === 'getSpaces') {
+        return {
+          uid: {
+            notion_user: {
+              uid: {
+                value: {
+                  value: {
+                    id: 'uid',
+                    name: 'User',
+                    email: 'u@x.com',
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+            space: {
+              'space-1': {
+                value: {
+                  value: {
+                    id: 'space-1',
+                    name: 'Personal',
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'test-token',
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { userCommand } = await import('./user')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await userCommand.parseAsync(['me'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.id).toBe('uid')
+    expect(result.name).toBe('User')
+    expect(result.email).toBe('u@x.com')
+    expect(Array.isArray(result.spaces)).toBe(true)
+    expect(result.spaces.length).toBe(1)
+    expect(result.spaces[0].id).toBe('space-1')
+    expect(result.spaces[0].name).toBe('Personal')
+  })
+
+  test('user list handles v3 nested record format', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string) => {
+      if (endpoint === 'getSpaces') {
+        return {
+          'uid-1': {
+            notion_user: {
+              'uid-1': {
+                value: {
+                  value: {
+                    id: 'uid-1',
+                    name: 'Alice',
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+            space: {
+              'space-123': {
+                value: {
+                  value: {
+                    id: 'space-123',
+                  },
+                  role: 'editor',
+                },
+              },
+            },
+          },
+        }
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'test-token',
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { userCommand } = await import('./user')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await userCommand.parseAsync(['list', '--workspace-id', 'space-123'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(Array.isArray(result)).toBe(true)
+    expect(result.length).toBe(1)
+    expect(result[0].id).toBe('uid-1')
+    expect(result[0].name).toBe('Alice')
+  })
 })
