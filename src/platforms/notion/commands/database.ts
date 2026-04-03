@@ -10,6 +10,7 @@ import {
   formatBlockRecord,
   formatCollectionValue,
   formatQueryCollectionResponse,
+  getRecordValue,
 } from '@/platforms/notion/formatters'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatNotionId } from '@/shared/utils/id'
@@ -512,7 +513,8 @@ async function fetchCollection(tokenV2: string, collectionId: string): Promise<C
     requests: [{ pointer: { table: 'collection', id: collectionId }, version: -1 }],
   })) as SyncCollectionResponse
 
-  const collection = Object.values(response.recordMap.collection ?? {})[0]?.value
+  const raw = Object.values(response.recordMap.collection ?? {})[0]
+  const collection = getRecordValue(raw as unknown as Record<string, unknown>) as CollectionValue | undefined
   if (!collection) {
     throw new Error(`Collection not found: ${collectionId}`)
   }
@@ -592,15 +594,18 @@ async function listAction(options: ListOptions): Promise<void> {
     await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
     const response = (await internalRequest(creds.token_v2, 'loadUserContent', {})) as LoadUserContentResponse
 
-    const output = Object.values(response.recordMap.collection ?? {}).map((record) => {
-      const collection = record.value
-      const schema = collection.schema ?? {}
-      return {
-        id: collection.id,
-        name: extractCollectionName(collection.name),
-        schema_properties: Object.keys(schema),
-      }
-    })
+    const output = Object.values(response.recordMap.collection ?? {})
+      .map((record) => {
+        const collection = getRecordValue(record as unknown as Record<string, unknown>) as CollectionValue | undefined
+        if (!collection) return undefined
+        const schema = collection.schema ?? {}
+        return {
+          id: collection.id,
+          name: extractCollectionName(collection.name),
+          schema_properties: Object.keys(schema),
+        }
+      })
+      .filter(Boolean)
 
     console.log(formatOutput(output, options.pretty))
   } catch (error) {
@@ -716,7 +721,8 @@ async function fetchView(tokenV2: string, viewId: string): Promise<ViewRecord['v
     requests: [{ pointer: { table: 'collection_view', id: viewId }, version: -1 }],
   })) as SyncViewResponse
 
-  const view = Object.values(response.recordMap.collection_view)[0]?.value
+  const raw = Object.values(response.recordMap.collection_view)[0]
+  const view = getRecordValue(raw as unknown as Record<string, unknown>) as ViewRecord['value'] | undefined
   if (!view) {
     throw new Error(`View not found: ${viewId}`)
   }
@@ -738,7 +744,9 @@ async function resolveCollectionFromView(tokenV2: string, view: ViewRecord['valu
     requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
   })) as { recordMap: { block: Record<string, { value: { collection_id?: string } }> } }
 
-  const blockCollectionId = Object.values(blockResp.recordMap.block)[0]?.value?.collection_id
+  const rawBlock = Object.values(blockResp.recordMap.block)[0]
+  const blockValue = getRecordValue(rawBlock as unknown as Record<string, unknown>)
+  const blockCollectionId = (blockValue as Record<string, unknown> | undefined)?.collection_id as string | undefined
   if (!blockCollectionId) {
     throw new Error('Could not determine collection for view')
   }
@@ -1059,7 +1067,10 @@ async function resolveCollectionBlock(tokenV2: string, collectionId: string): Pr
     requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
   })) as SyncBlockResponse
 
-  const block = Object.values(blockResp.recordMap.block)[0]?.value
+  const rawBlock = Object.values(blockResp.recordMap.block)[0]
+  const block = getRecordValue(rawBlock as unknown as Record<string, unknown>) as
+    | CollectionBlockRecord['value']
+    | undefined
   if (!block) {
     throw new Error(`Parent block not found for collection: ${collectionId}`)
   }
@@ -1086,8 +1097,8 @@ async function viewListAction(rawCollectionId: string, options: ViewListOptions)
     })) as SyncViewResponse
 
     const views = Object.values(response.recordMap.collection_view)
-      .map((record) => record.value)
-      .filter((v) => v.alive !== false)
+      .map((record) => getRecordValue(record as unknown as Record<string, unknown>) as ViewRecord['value'] | undefined)
+      .filter((v): v is ViewRecord['value'] => v !== undefined && v.alive !== false)
       .map((v) => ({
         id: v.id,
         type: v.type,
@@ -1185,7 +1196,10 @@ async function viewDeleteAction(rawViewId: string, options: ViewDeleteOptions): 
       requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
     })) as SyncBlockResponse
 
-    const block = Object.values(blockResp.recordMap.block)[0]?.value
+    const rawBlock = Object.values(blockResp.recordMap.block)[0]
+    const block = getRecordValue(rawBlock as unknown as Record<string, unknown>) as
+      | CollectionBlockRecord['value']
+      | undefined
     if (!block) {
       throw new Error('Parent block not found')
     }
@@ -1538,7 +1552,7 @@ export async function handleDatabaseUpdateRow(
   })) as SyncRecordValuesResponse
 
   const rowRecord = rowResponse.recordMap?.block?.[rowId] ?? Object.values(rowResponse.recordMap?.block ?? {})[0]
-  const blockValue = rowRecord?.value as
+  const blockValue = getRecordValue(rowRecord as Record<string, unknown> | undefined) as
     | {
         parent_table?: string
         parent_id?: string

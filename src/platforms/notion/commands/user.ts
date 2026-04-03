@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 
 import { internalRequest } from '@/platforms/notion/client'
-import { formatUserValue } from '@/platforms/notion/formatters'
+import { formatUserValue, getRecordValue } from '@/platforms/notion/formatters'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatOutput } from '@/shared/utils/output'
 
@@ -53,7 +53,8 @@ async function getAction(userId: string, options: UserGetOptions): Promise<void>
       requests: [{ pointer: { table: 'notion_user', id: userId }, version: -1 }],
     })) as SyncRecordValuesResponse
 
-    const user = Object.values(response.recordMap.notion_user ?? {})[0]?.value
+    const userRaw = Object.values(response.recordMap.notion_user ?? {})[0]
+    const user = getRecordValue(userRaw as unknown as Record<string, unknown>)
 
     console.log(formatOutput(formatUserValue(user as Record<string, unknown>), options.pretty))
   } catch (error) {
@@ -67,16 +68,20 @@ async function meAction(options: CommandOptions): Promise<void> {
     const response = (await internalRequest(creds.token_v2, 'getSpaces', {})) as GetSpacesResponse
 
     const accounts = Object.entries(response).map(([userId, entry]) => {
-      const userRecord = entry.notion_user ? Object.values(entry.notion_user)[0] : undefined
-      const spaces = Object.values(entry.space ?? {}).map((record) => ({
-        id: record.value.id,
-        name: record.value.name,
-      }))
+      const userRaw = entry.notion_user ? Object.values(entry.notion_user)[0] : undefined
+      const userValue = getRecordValue(userRaw as unknown as Record<string, unknown>) as NotionUserValue | undefined
+      const spaces = Object.values(entry.space ?? {}).map((record) => {
+        const spaceValue = getRecordValue(record as unknown as Record<string, unknown>) as SpaceValue | undefined
+        return {
+          id: spaceValue?.id ?? '',
+          name: spaceValue?.name,
+        }
+      })
 
       return {
         id: userId,
-        name: userRecord?.value.name,
-        email: userRecord?.value.email,
+        name: userValue?.name,
+        email: userValue?.email,
         spaces,
       }
     })
@@ -102,10 +107,13 @@ async function listAction(options: UserGetOptions): Promise<void> {
         continue
       }
 
-      for (const userRecord of Object.values(entry.notion_user ?? {})) {
-        if (seen.has(userRecord.value.id)) continue
-        seen.add(userRecord.value.id)
-        users.push(formatUserValue(userRecord.value as Record<string, unknown>))
+      for (const userRec of Object.values(entry.notion_user ?? {})) {
+        const userVal = getRecordValue(userRec as unknown as Record<string, unknown>)
+        if (!userVal) continue
+        const uid = (userVal as NotionUserValue).id
+        if (seen.has(uid)) continue
+        seen.add(uid)
+        users.push(formatUserValue(userVal as Record<string, unknown>))
       }
     }
 
