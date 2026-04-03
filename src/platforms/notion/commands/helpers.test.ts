@@ -71,13 +71,16 @@ async function getCredentialsOrThrow() {
 async function resolveSpaceId(tokenV2: string, blockId: string): Promise<string> {
   const result = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'block', id: blockId }, version: -1 }],
-  })) as { recordMap: { block: Record<string, { value: { space_id: string } }> } }
+  })) as { recordMap: { block: Record<string, Record<string, unknown>> } }
 
-  const block = Object.values(result.recordMap.block)[0]
-  if (!block?.value?.space_id) {
+  const raw = Object.values(result.recordMap.block)[0] as Record<string, unknown> | undefined
+  const outer = raw?.value as Record<string, unknown> | undefined
+  const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+  const spaceId = (inner?.space_id as string) ?? (raw?.spaceId as string)
+  if (!spaceId) {
     throw new Error(`Could not resolve space ID for block: ${blockId}`)
   }
-  return block.value.space_id
+  return spaceId
 }
 
 async function resolveCollectionViewId(tokenV2: string, collectionId: string): Promise<string> {
@@ -128,6 +131,13 @@ function extractSpaceViewPointers(entry: SpaceUserEntry, userId: string): SpaceV
 
 async function resolveAndSetActiveUserId(tokenV2: string, workspaceId?: string): Promise<void> {
   if (!workspaceId) return
+
+  if (!_capturedActiveUserId) {
+    const creds = await _mockGetCredentials()
+    if (creds && typeof creds === 'object' && 'user_id' in creds) {
+      _capturedActiveUserId = (creds as { user_id: string }).user_id
+    }
+  }
 
   const response = (await _mockInternalRequest(tokenV2, 'getSpaces', {})) as GetSpacesResponse
 
@@ -402,6 +412,38 @@ describe('resolveSpaceId', () => {
       requests: [{ pointer: { table: 'block', id: 'block-123' }, version: -1 }],
     })
   })
+
+  test('returns space_id from nested v3 response format', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: {
+          block: {
+            'block-123': {
+              spaceId: 'space-456',
+              value: { value: { space_id: 'space-456', type: 'page' }, role: 'editor' },
+            },
+          },
+        },
+      })
+    const result = await resolveSpaceId('token', 'block-123')
+    expect(result).toBe('space-456')
+  })
+
+  test('falls back to top-level spaceId when inner space_id is missing', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: {
+          block: {
+            'block-123': {
+              spaceId: 'space-789',
+              value: { value: { type: 'page' }, role: 'editor' },
+            },
+          },
+        },
+      })
+    const result = await resolveSpaceId('token', 'block-123')
+    expect(result).toBe('space-789')
+  })
 })
 
 describe('resolveCollectionViewId', () => {
@@ -635,5 +677,20 @@ describe('resolveAndSetActiveUserId', () => {
     } finally {
       console.error = originalError
     }
+  })
+
+  test('pre-sets activeUserId from stored credentials before getSpaces call', async () => {
+    _mockGetCredentials = () => Promise.resolve({ token_v2: 'test-token', user_id: 'cred-user-123' })
+    let activeUserIdAtGetSpacesCall: string | undefined
+    _mockInternalRequest = () => {
+      activeUserIdAtGetSpacesCall = _capturedActiveUserId
+      return Promise.resolve({
+        'cred-user-123': { space: { 'workspace-111': {} } },
+      })
+    }
+
+    await resolveAndSetActiveUserId('token', 'workspace-111')
+
+    expect(activeUserIdAtGetSpacesCall).toBe('cred-user-123')
   })
 })

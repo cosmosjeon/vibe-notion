@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { internalRequest, setActiveSpaceId, setActiveUserId } from '@/platforms/notion/client'
+import { getActiveUserId, internalRequest, setActiveSpaceId, setActiveUserId } from '@/platforms/notion/client'
 import { CredentialManager, type NotionCredentials } from '@/platforms/notion/credential-manager'
 import { collectBacklinkUserIds } from '@/platforms/notion/formatters'
 import { TokenExtractor } from '@/platforms/notion/token-extractor'
@@ -84,13 +84,16 @@ export async function getCredentialsOrThrow(): Promise<NotionCredentials> {
 export async function resolveSpaceId(tokenV2: string, blockId: string): Promise<string> {
   const result = (await internalRequest(tokenV2, 'syncRecordValues', {
     requests: [{ pointer: { table: 'block', id: blockId }, version: -1 }],
-  })) as { recordMap: { block: Record<string, { value: { space_id: string } }> } }
+  })) as { recordMap: { block: Record<string, Record<string, unknown>> } }
 
-  const block = Object.values(result.recordMap.block)[0]
-  if (!block?.value?.space_id) {
+  const raw = Object.values(result.recordMap.block)[0] as Record<string, unknown> | undefined
+  const outer = raw?.value as Record<string, unknown> | undefined
+  const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+  const spaceId = (inner?.space_id as string) ?? (raw?.spaceId as string)
+  if (!spaceId) {
     throw new Error(`Could not resolve space ID for block: ${blockId}`)
   }
-  return block.value.space_id
+  return spaceId
 }
 
 function extractSpaceViewPointers(entry: SpaceUserEntry, userId: string): SpaceViewPointer[] {
@@ -105,6 +108,14 @@ function extractSpaceViewPointers(entry: SpaceUserEntry, userId: string): SpaceV
 
 export async function resolveAndSetActiveUserId(tokenV2: string, workspaceId?: string): Promise<void> {
   if (!workspaceId) return
+
+  if (!getActiveUserId()) {
+    const manager = new CredentialManager()
+    const creds = await manager.getCredentials()
+    if (creds?.user_id) {
+      setActiveUserId(creds.user_id)
+    }
+  }
 
   const response = (await internalRequest(tokenV2, 'getSpaces', {})) as GetSpacesResponse
 

@@ -482,8 +482,10 @@ export async function handlePageUpdate(
       verticalColumns: false,
     })) as LoadPageChunkResponse
 
-    const parentBlock = pageChunk.recordMap.block[pageId]?.value
-    const existingChildIds = (parentBlock?.content as string[] | undefined) ?? []
+    const rawParentBlock = pageChunk.recordMap.block[pageId]?.value as Record<string, unknown> | undefined
+    const parentBlock =
+      typeof rawParentBlock?.role === 'string' ? (rawParentBlock.value as Record<string, unknown>) : rawParentBlock
+    const existingChildIds = (parentBlock?.content as string[]) ?? []
 
     if (existingChildIds.length > 0) {
       const deleteOps: Operation[] = existingChildIds.flatMap((childId) => [
