@@ -122,10 +122,23 @@ function buildTableRowProperties(columnIds: string[], cells: string[]): Record<s
   return properties
 }
 
+function unwrapBlockRecord(record: BlockRecord | undefined): BlockValue | undefined {
+  if (!record?.value) return undefined
+  const outer = record.value as unknown as Record<string, unknown>
+  if (typeof outer.role === 'string' && outer.value !== undefined) {
+    return outer.value as BlockValue
+  }
+  return record.value
+}
+
 function getBlockById(blockMap: Record<string, BlockRecord>, blockId: string): BlockValue | undefined {
-  const direct = blockMap[blockId]?.value
+  const direct = unwrapBlockRecord(blockMap[blockId])
   if (direct) return direct
-  return Object.values(blockMap).find((record) => record.value?.id === blockId)?.value
+  for (const record of Object.values(blockMap)) {
+    const value = unwrapBlockRecord(record)
+    if (value?.id === blockId) return value
+  }
+  return undefined
 }
 
 function assertTableBlock(block: BlockValue | undefined, tableId: string): BlockValue {
