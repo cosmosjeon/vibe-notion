@@ -294,7 +294,7 @@ export function formatBlockRecord(record: Record<string, unknown>): {
   title: string
   type: string
 } {
-  const value = toRecord(record.value) ?? {}
+  const value = getRecordValue(record) ?? {}
 
   return {
     id: toStringValue(value.id),
@@ -746,7 +746,7 @@ function buildTableRowChildren(
   return children
 }
 
-function getRecordValue(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+export function getRecordValue(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!record) return undefined
   const outer = toRecord(record.value)
   if (!outer) return undefined
