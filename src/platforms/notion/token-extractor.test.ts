@@ -37,6 +37,10 @@ function createCookiesDb(dbPath: string, rows: Array<Record<string, unknown>>): 
   db.close()
 }
 
+function createMissingPath(name: string): string {
+  return join(tmpdir(), `${name}-${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`)
+}
+
 describe('TokenExtractor', () => {
   const tempDirs: string[] = []
 
@@ -127,10 +131,12 @@ describe('TokenExtractor', () => {
   test('getNotionDir picks the first existing macOS candidate', () => {
     const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-dir-fallback-'))
     tempDirs.push(fallbackDir)
+    const missingPrimary = createMissingPath('notion-missing-primary')
+    const missingSecondary = createMissingPath('notion-missing-secondary')
 
     class TestTokenExtractor extends TokenExtractor {
       protected override getNotionDirCandidates(): string[] {
-        return ['/tmp/notion-missing-primary', fallbackDir, '/tmp/notion-missing-secondary']
+        return [missingPrimary, fallbackDir, missingSecondary]
       }
     }
 
@@ -141,6 +147,7 @@ describe('TokenExtractor', () => {
   test('extract uses fallback Notion directory when primary macOS path is missing', async () => {
     const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-app-support-fallback-'))
     tempDirs.push(fallbackDir)
+    const missingPrimary = createMissingPath('notion-missing-primary')
 
     const partitionDir = join(fallbackDir, 'Partitions', 'notion')
     mkdirSync(partitionDir, { recursive: true })
@@ -156,7 +163,7 @@ describe('TokenExtractor', () => {
 
     class TestTokenExtractor extends TokenExtractor {
       protected override getNotionDirCandidates(): string[] {
-        return ['/tmp/notion-missing-primary', fallbackDir]
+        return [missingPrimary, fallbackDir]
       }
     }
 
