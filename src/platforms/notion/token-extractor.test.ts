@@ -124,6 +124,49 @@ describe('TokenExtractor', () => {
     await expect(extractor.extract()).rejects.toThrow('Notion directory not found')
   })
 
+  test('getNotionDir picks the first existing macOS candidate', () => {
+    const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-dir-fallback-'))
+    tempDirs.push(fallbackDir)
+
+    class TestTokenExtractor extends TokenExtractor {
+      protected override getNotionDirCandidates(): string[] {
+        return ['/tmp/notion-missing-primary', fallbackDir, '/tmp/notion-missing-secondary']
+      }
+    }
+
+    const extractor = new TestTokenExtractor('darwin')
+    expect(extractor.getNotionDir()).toBe(fallbackDir)
+  })
+
+  test('extract uses fallback Notion directory when primary macOS path is missing', async () => {
+    const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-app-support-fallback-'))
+    tempDirs.push(fallbackDir)
+
+    const partitionDir = join(fallbackDir, 'Partitions', 'notion')
+    mkdirSync(partitionDir, { recursive: true })
+    createCookiesDb(join(partitionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Afallback-app-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 1,
+      },
+    ])
+
+    class TestTokenExtractor extends TokenExtractor {
+      protected override getNotionDirCandidates(): string[] {
+        return ['/tmp/notion-missing-primary', fallbackDir]
+      }
+    }
+
+    const extractor = new TestTokenExtractor('darwin')
+    const extracted = await extractor.extract()
+
+    expect(extracted).toEqual({ token_v2: 'v02%3Afallback-app-token' })
+    expect(extractor.getNotionDir()).toBe(fallbackDir)
+  })
+
   test('extract returns token and user_id from cookies sqlite', async () => {
     const notionDir = mkdtempSync(join(tmpdir(), 'notion-test-'))
     tempDirs.push(notionDir)
