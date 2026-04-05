@@ -6,14 +6,16 @@ import { randomUUID } from 'node:crypto'
 
 let _mockInternalRequest: (...args: unknown[]) => unknown = () => Promise.resolve({})
 let _mockGetCredentials: (...args: unknown[]) => unknown = () => Promise.resolve(null)
-let _mockExtract: (...args: unknown[]) => unknown = () => Promise.resolve(null)
+let _mockAppExtract: (...args: unknown[]) => unknown = () => Promise.resolve(null)
+let _mockBrowserExtract: (...args: unknown[]) => unknown = () => Promise.resolve(null)
 let _mockSetCredentials: (...args: unknown[]) => unknown = () => Promise.resolve()
 let _capturedActiveUserId: string | undefined
 
 afterEach(() => {
   _mockInternalRequest = () => Promise.resolve({})
   _mockGetCredentials = () => Promise.resolve(null)
-  _mockExtract = () => Promise.resolve(null)
+  _mockAppExtract = () => Promise.resolve(null)
+  _mockBrowserExtract = () => Promise.resolve(null)
   _mockSetCredentials = () => Promise.resolve()
   _capturedActiveUserId = undefined
 })
@@ -29,9 +31,26 @@ async function getCredentialsOrExit() {
   const creds = await _mockGetCredentials()
   if (creds) return creds
 
-  // Auto-extract from Notion desktop app
   try {
-    const extracted = await _mockExtract()
+    const extracted = await _mockAppExtract()
+    if (extracted) {
+      await _mockSetCredentials(extracted)
+      return extracted
+    }
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Notion directory not found')) {
+      console.error(
+        JSON.stringify({
+          error: `Auto-extraction failed: ${(error as Error).message}`,
+          hint: 'Run: vibe-notion auth extract --debug',
+        }),
+      )
+      process.exit(1)
+    }
+  }
+
+  try {
+    const extracted = await _mockBrowserExtract()
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -54,9 +73,20 @@ async function getCredentialsOrThrow() {
   const creds = await _mockGetCredentials()
   if (creds) return creds
 
-  // Auto-extract from Notion desktop app
   try {
-    const extracted = await _mockExtract()
+    const extracted = await _mockAppExtract()
+    if (extracted) {
+      await _mockSetCredentials(extracted)
+      return extracted
+    }
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Notion directory not found')) {
+      throw new Error(`Auto-extraction failed: ${(error as Error).message}`)
+    }
+  }
+
+  try {
+    const extracted = await _mockBrowserExtract()
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -330,7 +360,8 @@ describe('getCredentialsOrExit', () => {
 
   test('logs error message when no credentials and auto-extract fails', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.resolve(null))
+    _mockBrowserExtract = mock(() => Promise.resolve(null))
 
     const mockExit = mock(() => {
       throw new Error('process.exit called')
@@ -356,7 +387,7 @@ describe('getCredentialsOrExit', () => {
   test('auto-extracts and returns credentials when no stored credentials', async () => {
     const extracted = { token_v2: 'extracted-token', user_id: 'user-1' }
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(extracted))
+    _mockAppExtract = mock(() => Promise.resolve(extracted))
     _mockSetCredentials = mock(() => Promise.resolve())
 
     const mockExit = mock(() => {
@@ -377,16 +408,25 @@ describe('getCredentialsOrExit', () => {
   test('saves auto-extracted credentials', async () => {
     const extracted = { token_v2: 'extracted-token', user_id: 'user-1' }
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(extracted))
+    _mockAppExtract = mock(() => Promise.resolve(extracted))
     _mockSetCredentials = mock(() => Promise.resolve())
 
     await getCredentialsOrExit()
     expect(_mockSetCredentials).toHaveBeenCalledWith(extracted)
   })
 
-  test('exits with extraction error message when auto-extraction throws', async () => {
+  test('falls back to browser when desktop app is not installed', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockBrowserExtract = mock(() => Promise.resolve({ token_v2: 'browser-token' }))
+
+    const result = await getCredentialsOrExit()
+    expect(result).toEqual({ token_v2: 'browser-token' })
+  })
+
+  test('exits with extraction error message when desktop auto-extraction fails hard', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')))
 
     const mockExit = mock(() => {
       throw new Error('process.exit called')
@@ -403,7 +443,7 @@ describe('getCredentialsOrExit', () => {
       expect(mockExit).toHaveBeenCalledWith(1)
       expect(consoleErrorMock).toHaveBeenCalledWith(
         JSON.stringify({
-          error: 'Auto-extraction failed: Notion directory not found',
+          error: 'Auto-extraction failed: Failed to read Notion cookies. Quit the Notion app completely and try again.',
           hint: 'Run: vibe-notion auth extract --debug',
         }),
       )
@@ -425,7 +465,8 @@ describe('getCredentialsOrThrow', () => {
 
   test('throws an Error when no credentials', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.resolve(null))
+    _mockBrowserExtract = mock(() => Promise.resolve(null))
 
     await expect(getCredentialsOrThrow()).rejects.toThrow('Not authenticated. Run: vibe-notion auth extract')
   })
@@ -433,7 +474,7 @@ describe('getCredentialsOrThrow', () => {
   test('auto-extracts and returns credentials when no stored credentials', async () => {
     const extracted = { token_v2: 'extracted-token', user_id: 'user-1' }
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(extracted))
+    _mockAppExtract = mock(() => Promise.resolve(extracted))
     _mockSetCredentials = mock(() => Promise.resolve())
 
     const result = await getCredentialsOrThrow()
@@ -443,18 +484,38 @@ describe('getCredentialsOrThrow', () => {
   test('saves auto-extracted credentials', async () => {
     const extracted = { token_v2: 'extracted-token', user_id: 'user-1' }
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.resolve(extracted))
+    _mockAppExtract = mock(() => Promise.resolve(extracted))
     _mockSetCredentials = mock(() => Promise.resolve())
 
     await getCredentialsOrThrow()
     expect(_mockSetCredentials).toHaveBeenCalledWith(extracted)
   })
 
-  test('throws with extraction error message when auto-extraction throws', async () => {
+  test('uses browser fallback when desktop app is not installed', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockBrowserExtract = mock(() => Promise.resolve({ token_v2: 'browser-token' }))
 
-    await expect(getCredentialsOrThrow()).rejects.toThrow('Auto-extraction failed: Notion directory not found')
+    await expect(getCredentialsOrThrow()).resolves.toEqual({ token_v2: 'browser-token' })
+  })
+
+  test('throws with extraction error message when desktop auto-extraction fails hard', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')))
+
+    await expect(getCredentialsOrThrow()).rejects.toThrow(
+      'Auto-extraction failed: Failed to read Notion cookies. Quit the Notion app completely and try again.',
+    )
+  })
+
+  test('throws with browser extraction error after desktop fallback', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockBrowserExtract = mock(() => Promise.reject(new Error('better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3')))
+
+    await expect(getCredentialsOrThrow()).rejects.toThrow(
+      'Auto-extraction failed: better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3',
+    )
   })
 })
 
