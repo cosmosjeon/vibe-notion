@@ -6,14 +6,20 @@ import { type ExtractedToken, TokenExtractor } from '@/platforms/notion/token-ex
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatOutput } from '@/shared/utils/output'
 
-type CommandOptions = { pretty?: boolean; debug?: boolean; source?: 'app' | 'browser' }
+type CommandOptions = { pretty?: boolean; debug?: boolean; source?: 'auto' | 'app' | 'browser' }
 
-function parseSource(source: string | undefined): 'app' | 'browser' {
-  if (!source) return 'app'
+function parseSource(source: string | undefined): 'auto' | 'app' | 'browser' {
+  if (!source) return 'auto'
+  if (source === 'auto') return 'auto'
   if (source === 'app') return 'app'
   if (source === 'browser') return 'browser'
 
-  throw new Error(`Invalid source: ${source}. Expected "app" or "browser".`)
+  throw new Error(`Invalid source: ${source}. Expected "auto", "app", or "browser".`)
+}
+
+function shouldFallbackToBrowser(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.message.includes('Notion directory not found')
 }
 
 function maskToken(token: string): string {
@@ -94,12 +100,50 @@ async function extractFromBrowser(options: CommandOptions): Promise<{ extracted:
   return { extracted, errors: extractor.getErrors() }
 }
 
+async function extractAutomatically(
+  options: CommandOptions,
+): Promise<{ extracted: ExtractedToken | null; errors: string[]; source: 'app' | 'browser' }> {
+  const appResult: { extracted: ExtractedToken | null; errors: string[] } = {
+    extracted: null,
+    errors: [],
+  }
+
+  try {
+    const result = await extractFromApp(options)
+    appResult.extracted = result.extracted
+    appResult.errors = result.errors
+    if (result.extracted) {
+      return { ...result, source: 'app' }
+    }
+  } catch (error) {
+    if (!shouldFallbackToBrowser(error)) {
+      throw error
+    }
+
+    const message = error instanceof Error ? error.message : String(error)
+    appResult.errors = [
+      message,
+      ...appResult.errors,
+    ]
+  }
+
+  const browserResult = await extractFromBrowser(options)
+  return {
+    ...browserResult,
+    errors: [...appResult.errors, ...browserResult.errors],
+    source: 'browser',
+  }
+}
+
 async function extractAction(options: CommandOptions): Promise<void> {
   try {
     const source = parseSource(options.source)
-    const { extracted, errors } = source === 'browser'
-      ? await extractFromBrowser(options)
-      : await extractFromApp(options)
+    const result = source === 'browser'
+      ? { ...(await extractFromBrowser(options)), source: 'browser' as const }
+      : source === 'app'
+        ? { ...(await extractFromApp(options)), source: 'app' as const }
+        : await extractAutomatically(options)
+    const { extracted, errors } = result
 
     if (options.debug) {
       for (const err of errors) {
@@ -137,7 +181,7 @@ async function extractAction(options: CommandOptions): Promise<void> {
     console.log(
       formatOutput(
         {
-          source,
+          source: result.source,
           token_v2: maskToken(extracted.token_v2),
           user_id: extracted.user_id,
           user_ids: extracted.user_ids,
@@ -208,7 +252,7 @@ export const authCommand = new Command('auth')
       .description('Extract token_v2 from Notion desktop app or browser')
       .option('--pretty', 'Pretty print JSON output')
       .option('--debug', 'Show debug output for troubleshooting')
-      .option('--source <source>', 'Extraction source: app (default) or browser', 'app')
+      .option('--source <source>', 'Extraction source: auto (default), app, or browser', 'auto')
       .action(extractAction),
   )
   .addCommand(
