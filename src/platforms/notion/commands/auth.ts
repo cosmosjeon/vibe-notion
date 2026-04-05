@@ -1,11 +1,20 @@
 import { Command } from 'commander'
 
+import { BrowserTokenExtractor } from '@/platforms/notion/browser-token-extractor'
 import { CredentialManager } from '@/platforms/notion/credential-manager'
-import { TokenExtractor } from '@/platforms/notion/token-extractor'
+import { type ExtractedToken, TokenExtractor } from '@/platforms/notion/token-extractor'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatOutput } from '@/shared/utils/output'
 
-type CommandOptions = { pretty?: boolean; debug?: boolean }
+type CommandOptions = { pretty?: boolean; debug?: boolean; source?: 'app' | 'browser' }
+
+function parseSource(source: string | undefined): 'app' | 'browser' {
+  if (!source) return 'app'
+  if (source === 'app') return 'app'
+  if (source === 'browser') return 'browser'
+
+  throw new Error(`Invalid source: ${source}. Expected "app" or "browser".`)
+}
 
 function maskToken(token: string): string {
   if (token.length <= 10) {
@@ -38,46 +47,77 @@ async function validateTokenV2(tokenV2: string): Promise<void> {
   }
 }
 
+async function extractFromApp(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[] }> {
+  const extractor = new TokenExtractor(undefined, undefined, { debug: options.debug })
+
+  if (process.platform === 'darwin') {
+    console.log('')
+    console.log('  Extracting your Notion credentials...')
+    console.log('')
+    console.log('  Your Mac may ask for your password to access Keychain.')
+    console.log('  This is required because Notion encrypts your login cookies')
+    console.log('  using macOS Keychain for security.')
+    console.log('')
+    console.log('  What happens:')
+    console.log("    1. We read the encrypted cookie from Notion's local storage")
+    console.log('    2. macOS Keychain decrypts it (requires your password)')
+    console.log('    3. The token is stored locally in ~/.config/vibe-notion/')
+    console.log('')
+    console.log('  Your password is never stored or transmitted anywhere.')
+    console.log('')
+  }
+
+  if (options.debug) {
+    console.error(`[debug] Notion directory: ${extractor.getNotionDir()}`)
+  }
+
+  const extracted = await extractor.extract()
+  return { extracted, errors: extractor.getErrors() }
+}
+
+async function extractFromBrowser(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[] }> {
+  const extractor = new BrowserTokenExtractor(undefined, { debug: options.debug })
+
+  if (process.platform === 'darwin') {
+    console.log('')
+    console.log('  Extracting your Notion credentials from browser...')
+    console.log('')
+    console.log('  Your Mac may ask for your password to access Keychain.')
+    console.log('  This is required because browsers encrypt cookies')
+    console.log('  using macOS Keychain for security.')
+    console.log('')
+    console.log('  Your password is never stored or transmitted anywhere.')
+    console.log('')
+  }
+
+  const extracted = await extractor.extract()
+  return { extracted, errors: extractor.getErrors() }
+}
+
 async function extractAction(options: CommandOptions): Promise<void> {
   try {
-    const extractor = new TokenExtractor(undefined, undefined, { debug: options.debug })
-
-    if (process.platform === 'darwin') {
-      console.log('')
-      console.log('  Extracting your Notion credentials...')
-      console.log('')
-      console.log('  Your Mac may ask for your password to access Keychain.')
-      console.log('  This is required because Notion encrypts your login cookies')
-      console.log('  using macOS Keychain for security.')
-      console.log('')
-      console.log('  What happens:')
-      console.log("    1. We read the encrypted cookie from Notion's local storage")
-      console.log('    2. macOS Keychain decrypts it (requires your password)')
-      console.log('    3. The token is stored locally in ~/.config/vibe-notion/')
-      console.log('')
-      console.log('  Your password is never stored or transmitted anywhere.')
-      console.log('')
-    }
+    const source = parseSource(options.source)
+    const { extracted, errors } = source === 'browser'
+      ? await extractFromBrowser(options)
+      : await extractFromApp(options)
 
     if (options.debug) {
-      console.error(`[debug] Notion directory: ${extractor.getNotionDir()}`)
-    }
-
-    const extracted = await extractor.extract()
-
-    if (options.debug) {
-      for (const err of extractor.getErrors()) {
+      for (const err of errors) {
         console.error(`[debug] ${err}`)
       }
     }
 
     if (!extracted) {
+      const errorMessage = source === 'browser'
+        ? 'No token_v2 found in any browser. Make sure you are logged in to Notion in a Chromium-based browser.'
+        : 'No token_v2 found. Make sure Notion desktop app is installed and logged in.'
+
       console.log(
         formatOutput(
           {
-            error: 'No token_v2 found. Make sure Notion desktop app is installed and logged in.',
+            error: errorMessage,
             hint: options.debug ? undefined : 'Run with --debug for more info.',
-            ...(options.debug && extractor.getErrors().length > 0 ? { extraction_errors: extractor.getErrors() } : {}),
+            ...(options.debug && errors.length > 0 ? { extraction_errors: errors } : {}),
           },
           options.pretty,
         ),
@@ -97,6 +137,7 @@ async function extractAction(options: CommandOptions): Promise<void> {
     console.log(
       formatOutput(
         {
+          source,
           token_v2: maskToken(extracted.token_v2),
           user_id: extracted.user_id,
           user_ids: extracted.user_ids,
@@ -164,9 +205,10 @@ export const authCommand = new Command('auth')
   .description('Authentication commands')
   .addCommand(
     new Command('extract')
-      .description('Extract token_v2 from Notion desktop app')
+      .description('Extract token_v2 from Notion desktop app or browser')
       .option('--pretty', 'Pretty print JSON output')
       .option('--debug', 'Show debug output for troubleshooting')
+      .option('--source <source>', 'Extraction source: app (default) or browser', 'app')
       .action(extractAction),
   )
   .addCommand(
