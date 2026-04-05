@@ -631,6 +631,161 @@ describe('BrowserTokenExtractor', () => {
     expect(result).toEqual({ token_v2: 'v02%3Aprofile-1-token' })
   })
 
+  test('extractAll returns tokens from multiple browser profiles sorted by recency', async () => {
+    const homeBase = mkdtempSync(join(tmpdir(), 'browser-extract-all-'))
+    tempDirs.push(homeBase)
+
+    const chromeDefault = createBrowserProfile(homeBase, 'Chrome', 'Default')
+    const edgeProfile = createBrowserProfile(homeBase, 'Edge', 'Profile 2')
+
+    const chromeCookiePath = join(chromeDefault, 'Cookies')
+    const edgeCookiePath = join(edgeProfile, 'Cookies')
+
+    createCookiesDb(chromeCookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Aolder-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 10,
+      },
+    ])
+
+    createCookiesDb(edgeCookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Anewer-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 20,
+      },
+    ])
+
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserCookiePaths(): string[] {
+        return [chromeCookiePath, edgeCookiePath]
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
+    const result = await extractor.extractAll()
+
+    expect(result).toEqual([
+      { token_v2: 'v02%3Anewer-token' },
+      { token_v2: 'v02%3Aolder-token' },
+    ])
+  })
+
+  test('extractAll keeps the freshest duplicate token candidate', async () => {
+    const homeBase = mkdtempSync(join(tmpdir(), 'browser-extract-dedupe-'))
+    tempDirs.push(homeBase)
+
+    const olderProfile = createBrowserProfile(homeBase, 'Chrome', 'Default')
+    const newerProfile = createBrowserProfile(homeBase, 'Chrome', 'Profile 3')
+
+    const olderCookiePath = join(olderProfile, 'Cookies')
+    const newerCookiePath = join(newerProfile, 'Cookies')
+
+    createCookiesDb(olderCookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Ashared-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 10,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 9,
+      },
+    ])
+
+    createCookiesDb(newerCookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Ashared-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 30,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 29,
+      },
+      {
+        name: 'notion_users',
+        value: '["user-new","user-extra"]',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 28,
+      },
+    ])
+
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserCookiePaths(): string[] {
+        return [olderCookiePath, newerCookiePath]
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
+    const result = await extractor.extractAll()
+
+    expect(result).toEqual([
+      {
+        token_v2: 'v02%3Ashared-token',
+        user_id: 'user-new',
+        user_ids: ['user-new', 'user-extra'],
+      },
+    ])
+  })
+
+  test('extract discovers profiles listed in Local State', async () => {
+    const homeBase = mkdtempSync(join(tmpdir(), 'browser-local-state-'))
+    tempDirs.push(homeBase)
+
+    const browserBase = join(homeBase, 'TestBrowser')
+    mkdirSync(browserBase, { recursive: true })
+    writeFileSync(
+      join(browserBase, 'Local State'),
+      JSON.stringify({
+        profile: {
+          info_cache: {
+            'Profile 7': { name: 'Work' },
+          },
+        },
+      }),
+    )
+
+    const profileDir = createBrowserProfile(homeBase, 'TestBrowser', 'Profile 7')
+    const cookiePath = join(profileDir, 'Cookies')
+    createCookiesDb(cookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Alocal-state-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 1,
+      },
+    ])
+
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserBasePath(_browser: { name: string; darwin: string; linux: string; win32: string }): string {
+        return browserBase
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
+    const result = await extractor.extract()
+
+    expect(result).toEqual({ token_v2: 'v02%3Alocal-state-token' })
+  })
+
   test('extract parses notion_users from encrypted cookie with garbage prefix', async () => {
     // given
     const homeBase = mkdtempSync(join(tmpdir(), 'browser-enc-users-'))
