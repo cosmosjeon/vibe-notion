@@ -391,6 +391,8 @@ describe('auth extract', () => {
 
     // Then
     expect(consoleLogMock).toHaveBeenCalled()
+    const output = JSON.parse(consoleLogMock.mock.calls.at(-1)?.[0])
+    expect(output.error).toContain('No token_v2 found in any browser')
   })
 
   test('rejects invalid source values', async () => {

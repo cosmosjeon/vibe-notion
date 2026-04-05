@@ -152,7 +152,7 @@ async function extractAction(options: CommandOptions): Promise<void> {
     }
 
     if (!extracted) {
-      const errorMessage = source === 'browser'
+      const errorMessage = result.source === 'browser'
         ? 'No token_v2 found in any browser. Make sure you are logged in to Notion in a Chromium-based browser.'
         : 'No token_v2 found. Make sure Notion desktop app is installed and logged in.'
 
