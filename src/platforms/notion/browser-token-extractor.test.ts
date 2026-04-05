@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -569,7 +569,9 @@ describe('BrowserTokenExtractor', () => {
     class TestExtractor extends BrowserTokenExtractor {
       override getBrowserCookiePaths(): string[] {
         const paths: string[] = []
-        for (const profile of ['Default', 'Profile 1', 'Profile 2']) {
+        const entries = readdirSync(browserBase, { withFileTypes: true })
+        const profiles = ['Default', ...entries.filter(e => e.isDirectory() && /^Profile \d+$/i.test(e.name)).map(e => e.name)]
+        for (const profile of profiles) {
           paths.push(join(browserBase, profile, 'Network', 'Cookies'))
           paths.push(join(browserBase, profile, 'Cookies'))
         }

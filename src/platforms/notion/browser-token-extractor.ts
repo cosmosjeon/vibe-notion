@@ -424,7 +424,7 @@ export class BrowserTokenExtractor {
   lookupLinuxKeyringPassword(appName: string): string | null {
     try {
       return execSync(
-        `secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application ${appName}`,
+        `secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application '${appName}'`,
         { timeout: 5000, encoding: 'utf8' },
       ).trim()
     } catch {
