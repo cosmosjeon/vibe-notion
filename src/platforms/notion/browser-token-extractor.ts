@@ -85,7 +85,7 @@ const BROWSERS: BrowserConfig[] = [
   },
 ]
 
-const NOTION_HOST_KEYS = ['.notion.so', 'www.notion.so', 'notion.so']
+const NOTION_HOST_KEYS = ['.www.notion.so', '.notion.so', 'www.notion.so', 'notion.so']
 const NOTION_COOKIE_NAMES = ['token_v2', 'notion_user_id', 'notion_users']
 
 const KEYCHAIN_VARIANTS: KeychainVariant[] = [

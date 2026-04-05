@@ -95,7 +95,13 @@ describe('BrowserTokenExtractor', () => {
   })
 
   test('extract returns null when no browser cookies exist', async () => {
-    const extractor = new BrowserTokenExtractor('darwin')
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserCookiePaths(): string[] {
+        return ['/nonexistent/browser/Cookies']
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
     const result = await extractor.extract()
     expect(result).toBeNull()
   })
@@ -171,6 +177,45 @@ describe('BrowserTokenExtractor', () => {
 
     // then
     expect(result).toEqual({ token_v2: 'v02%3Anetwork-token' })
+  })
+
+  test('extract matches token cookies stored under .www.notion.so', async () => {
+    // given
+    const homeBase = mkdtempSync(join(tmpdir(), 'browser-www-host-'))
+    tempDirs.push(homeBase)
+
+    const profileDir = createBrowserProfile(homeBase, 'TestBrowser', 'Default')
+    const cookiePath = join(profileDir, 'Cookies')
+
+    createCookiesDb(cookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Awww-host-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.www.notion.so',
+        last_access_utc: 2,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-www',
+        encrypted_value: new Uint8Array(),
+        host_key: '.www.notion.so',
+        last_access_utc: 1,
+      },
+    ])
+
+    // when
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserCookiePaths(): string[] {
+        return [cookiePath]
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
+    const result = await extractor.extract()
+
+    // then
+    expect(result).toEqual({ token_v2: 'v02%3Awww-host-token', user_id: 'user-www' })
   })
 
   test('extract returns null when cookie DB has no notion cookies', async () => {
