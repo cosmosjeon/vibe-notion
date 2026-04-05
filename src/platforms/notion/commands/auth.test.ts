@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 let mockExtract: ReturnType<typeof mock>
 let mockSetCredentials: ReturnType<typeof mock>
@@ -8,6 +8,9 @@ let mockFetch: ReturnType<typeof mock>
 let mockExit: ReturnType<typeof mock>
 let consoleLogMock: ReturnType<typeof mock>
 let consoleErrorMock: ReturnType<typeof mock>
+let originalExit: typeof process.exit
+let originalConsoleLog: typeof console.log
+let originalConsoleError: typeof console.error
 
 beforeEach(() => {
   mockExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Atest-token', user_id: 'user-1' }))
@@ -20,10 +23,21 @@ beforeEach(() => {
   })
   consoleLogMock = mock(() => {})
   consoleErrorMock = mock(() => {})
+  originalExit = process.exit
+  originalConsoleLog = console.log
+  originalConsoleError = console.error
 
   mock.module('../token-extractor', () => ({
     TokenExtractor: class {
       getNotionDir = () => '/tmp/notion'
+      getErrors = () => []
+      extract = mockExtract
+    },
+  }))
+
+  mock.module('../browser-token-extractor', () => ({
+    BrowserTokenExtractor: class {
+      getErrors = () => []
       extract = mockExtract
     },
   }))
@@ -40,6 +54,13 @@ beforeEach(() => {
   process.exit = mockExit as any
   console.log = consoleLogMock as any
   console.error = consoleErrorMock as any
+})
+
+afterEach(() => {
+  process.exit = originalExit
+  console.log = originalConsoleLog
+  console.error = originalConsoleError
+  mock.restore()
 })
 
 describe('auth status', () => {
@@ -182,6 +203,7 @@ describe('auth extract', () => {
     mock.module('../token-extractor', () => ({
       TokenExtractor: class {
         getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
         extract = mockExtract
       },
     }))
@@ -211,12 +233,49 @@ describe('auth extract', () => {
     expect(consoleLogMock).toHaveBeenCalled()
   })
 
+  test('extracts token from browser when source is browser', async () => {
+    mockExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Abrowser-token-long', user_id: 'user-2' }))
+    mockSetCredentials = mock(() => Promise.resolve())
+    mockFetch = mock(() => Promise.resolve({ ok: true }))
+
+    mock.module('../browser-token-extractor', () => ({
+      BrowserTokenExtractor: class {
+        getErrors = () => []
+        extract = mockExtract
+      },
+    }))
+
+    mock.module('../credential-manager', () => ({
+      CredentialManager: class {
+        setCredentials = mockSetCredentials
+        getCredentials = mockGetCredentials
+        remove = mockRemove
+      },
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    await authCommand.parseAsync(['extract', '--source', 'browser'], { from: 'user' })
+
+    expect(mockExtract).toHaveBeenCalled()
+    expect(mockFetch).toHaveBeenCalled()
+    expect(mockSetCredentials).toHaveBeenCalledWith({
+      token_v2: 'v02%3Abrowser-token-long',
+      user_id: 'user-2',
+    })
+    const output = JSON.parse(consoleLogMock.mock.calls.at(-1)?.[0])
+    expect(output.source).toBe('browser')
+  })
+
   test('outputs error when no token found', async () => {
     // Given
     mockExtract = mock(() => Promise.resolve(null))
     mock.module('../token-extractor', () => ({
       TokenExtractor: class {
         getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
         extract = mockExtract
       },
     }))
@@ -232,5 +291,17 @@ describe('auth extract', () => {
 
     // Then
     expect(consoleLogMock).toHaveBeenCalled()
+  })
+
+  test('rejects invalid source values', async () => {
+    const { authCommand } = await import('./auth')
+
+    try {
+      await authCommand.parseAsync(['extract', '--source', 'foo'], { from: 'user' })
+    } catch {}
+
+    expect(consoleErrorMock).toHaveBeenCalled()
+    const output = JSON.parse(consoleErrorMock.mock.calls.at(-1)?.[0])
+    expect(output.error).toContain('Invalid source')
   })
 })

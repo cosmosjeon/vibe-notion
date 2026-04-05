@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { BrowserTokenExtractor } from '@/platforms/notion/browser-token-extractor'
 import { getActiveUserId, internalRequest, setActiveSpaceId, setActiveUserId } from '@/platforms/notion/client'
 import { CredentialManager, type NotionCredentials } from '@/platforms/notion/credential-manager'
 import { collectBacklinkUserIds, getRecordValue } from '@/platforms/notion/formatters'
@@ -34,19 +35,43 @@ export function generateId(): string {
   return randomUUID()
 }
 
+function shouldFallbackToBrowser(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.message.includes('Notion directory not found')
+}
+
+async function autoExtract(manager: CredentialManager): Promise<NotionCredentials | null> {
+  try {
+    const appExtractor = new TokenExtractor()
+    const appResult = await appExtractor.extract()
+    if (appResult) {
+      await manager.setCredentials(appResult)
+      return appResult
+    }
+  } catch (error) {
+    if (!shouldFallbackToBrowser(error)) {
+      throw error
+    }
+  }
+
+  const browserExtractor = new BrowserTokenExtractor()
+  const browserResult = await browserExtractor.extract()
+  if (browserResult) {
+    await manager.setCredentials(browserResult)
+    return browserResult
+  }
+
+  return null
+}
+
 export async function getCredentialsOrExit(): Promise<NotionCredentials> {
   const manager = new CredentialManager()
   const creds = await manager.getCredentials()
   if (creds) return creds
 
-  // Auto-extract from Notion desktop app
   try {
-    const extractor = new TokenExtractor()
-    const extracted = await extractor.extract()
-    if (extracted) {
-      await manager.setCredentials(extracted)
-      return extracted
-    }
+    const extracted = await autoExtract(manager)
+    if (extracted) return extracted
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -66,14 +91,9 @@ export async function getCredentialsOrThrow(): Promise<NotionCredentials> {
   const creds = await manager.getCredentials()
   if (creds) return creds
 
-  // Auto-extract from Notion desktop app
   try {
-    const extractor = new TokenExtractor()
-    const extracted = await extractor.extract()
-    if (extracted) {
-      await manager.setCredentials(extracted)
-      return extracted
-    }
+    const extracted = await autoExtract(manager)
+    if (extracted) return extracted
   } catch (error) {
     throw new Error(`Auto-extraction failed: ${(error as Error).message}`)
   }
