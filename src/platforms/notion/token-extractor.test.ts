@@ -37,6 +37,10 @@ function createCookiesDb(dbPath: string, rows: Array<Record<string, unknown>>): 
   db.close()
 }
 
+function createMissingPath(name: string): string {
+  return join(tmpdir(), `${name}-${process.pid}-${Date.now()}-${randomBytes(4).toString('hex')}`)
+}
+
 describe('TokenExtractor', () => {
   const tempDirs: string[] = []
 
@@ -122,6 +126,52 @@ describe('TokenExtractor', () => {
     const extractor = new TokenExtractor('darwin', missingDir)
 
     await expect(extractor.extract()).rejects.toThrow('Notion directory not found')
+  })
+
+  test('getNotionDir picks the first existing macOS candidate', () => {
+    const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-dir-fallback-'))
+    tempDirs.push(fallbackDir)
+    const missingPrimary = createMissingPath('notion-missing-primary')
+    const missingSecondary = createMissingPath('notion-missing-secondary')
+
+    class TestTokenExtractor extends TokenExtractor {
+      protected override getNotionDirCandidates(): string[] {
+        return [missingPrimary, fallbackDir, missingSecondary]
+      }
+    }
+
+    const extractor = new TestTokenExtractor('darwin')
+    expect(extractor.getNotionDir()).toBe(fallbackDir)
+  })
+
+  test('extract uses fallback Notion directory when primary macOS path is missing', async () => {
+    const fallbackDir = mkdtempSync(join(tmpdir(), 'notion-app-support-fallback-'))
+    tempDirs.push(fallbackDir)
+    const missingPrimary = createMissingPath('notion-missing-primary')
+
+    const partitionDir = join(fallbackDir, 'Partitions', 'notion')
+    mkdirSync(partitionDir, { recursive: true })
+    createCookiesDb(join(partitionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Afallback-app-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 1,
+      },
+    ])
+
+    class TestTokenExtractor extends TokenExtractor {
+      protected override getNotionDirCandidates(): string[] {
+        return [missingPrimary, fallbackDir]
+      }
+    }
+
+    const extractor = new TestTokenExtractor('darwin')
+    const extracted = await extractor.extract()
+
+    expect(extracted).toEqual({ token_v2: 'v02%3Afallback-app-token' })
+    expect(extractor.getNotionDir()).toBe(fallbackDir)
   })
 
   test('extract returns token and user_id from cookies sqlite', async () => {

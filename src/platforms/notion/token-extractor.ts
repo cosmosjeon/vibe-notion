@@ -63,23 +63,14 @@ export class TokenExtractor {
   }
 
   getNotionDir(): string {
-    switch (this.platform) {
-      case 'darwin':
-        return join(homedir(), 'Library', 'Application Support', 'Notion')
-      case 'linux':
-        return join(homedir(), '.config', 'Notion')
-      case 'win32': {
-        const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming')
-        return join(appData, 'Notion')
-      }
-      default:
-        throw new Error(`Unsupported platform: ${this.platform}`)
-    }
+    const candidates = this.getNotionDirCandidates()
+    return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
   }
 
   async extract(): Promise<ExtractedToken | null> {
     if (!existsSync(this.notionDir)) {
-      throw new Error(`Notion directory not found: ${this.notionDir}`)
+      const message = this.getMissingNotionDirMessage()
+      throw new Error(message)
     }
 
     return this.extractCookieFromSQLite()
@@ -271,6 +262,34 @@ export class TokenExtractor {
     }
 
     return null
+  }
+
+  protected getNotionDirCandidates(): string[] {
+    switch (this.platform) {
+      case 'darwin':
+        return [
+          join(homedir(), 'Library', 'Application Support', 'Notion'),
+          join(homedir(), 'Library', 'Containers', 'notion.id', 'Data', 'Library', 'Application Support', 'Notion'),
+          join(homedir(), 'Library', 'Containers', 'com.notion.id', 'Data', 'Library', 'Application Support', 'Notion'),
+        ]
+      case 'linux':
+        return [join(homedir(), '.config', 'Notion')]
+      case 'win32': {
+        const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming')
+        return [join(appData, 'Notion')]
+      }
+      default:
+        throw new Error(`Unsupported platform: ${this.platform}`)
+    }
+  }
+
+  private getMissingNotionDirMessage(): string {
+    const candidates = this.getNotionDirCandidates()
+    if (candidates.length === 1 || !candidates.includes(this.notionDir)) {
+      return `Notion directory not found: ${this.notionDir}`
+    }
+
+    return `Notion directory not found: ${this.notionDir} (checked: ${candidates.join(', ')})`
   }
 
   private readTokenFromDb(dbPath: string): ExtractedToken | null {
