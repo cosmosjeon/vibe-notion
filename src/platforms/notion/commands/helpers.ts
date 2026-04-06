@@ -44,9 +44,7 @@ function shouldFallbackToBrowser(error: unknown): boolean {
 async function autoExtract(manager: CredentialManager): Promise<NotionCredentials | null> {
   try {
     const appExtractor = new TokenExtractor()
-    const appAccounts = await ('extractAll' in appExtractor && typeof appExtractor.extractAll === 'function'
-      ? await appExtractor.extractAll()
-      : appExtractor.extract().then((extracted) => (extracted ? [extracted] : [])))
+    const appAccounts = await appExtractor.extractAll()
     const appValidation = await validateCandidates(appAccounts, 'app')
     if (appValidation.extracted) {
       const storedCredentials = withStoredAccounts(appValidation.extracted, appValidation.accounts)
@@ -60,9 +58,7 @@ async function autoExtract(manager: CredentialManager): Promise<NotionCredential
   }
 
   const browserExtractor = new BrowserTokenExtractor()
-  const browserAccounts = await ('extractAll' in browserExtractor && typeof browserExtractor.extractAll === 'function'
-    ? await browserExtractor.extractAll()
-    : browserExtractor.extract().then((extracted) => (extracted ? [extracted] : [])))
+  const browserAccounts = await browserExtractor.extractAll()
   const browserValidation = await validateCandidates(browserAccounts, 'browser')
   if (browserValidation.extracted) {
     const storedCredentials = withStoredAccounts(browserValidation.extracted, browserValidation.accounts)

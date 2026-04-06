@@ -380,55 +380,81 @@ export class TokenExtractor {
   }
 
   private buildCandidatesFromRows(rows: CookieRow[]): ExtractedTokenCandidate[] {
-    const candidates: ExtractedTokenCandidate[] = []
-    let segment: NonNullable<CookieRow>[] = []
+    const normalizedRows = rows.filter((row): row is NonNullable<CookieRow> => row !== null)
+    const tokenIndices = normalizedRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.name === 'token_v2')
 
-    const flushSegment = () => {
-      if (segment.length === 0) return
-
-      const tokenRow = segment.find((row) => row.name === 'token_v2')
-      if (!tokenRow) {
-        segment = []
-        return
-      }
-
-      const rawToken = this.resolveCookieValue(tokenRow)
+    const candidates: Array<ExtractedTokenCandidate & { tokenIndex: number }> = tokenIndices.flatMap(({ row, index }) => {
+      const rawToken = this.resolveCookieValue(row)
       if (!rawToken) {
-        segment = []
-        return
+        return []
       }
 
-      const rawUserId = this.resolveCookieValue(segment.find((row) => row.name === 'notion_user_id') ?? null)
-      const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : null
-      const userIds = this.parseUserIds(segment.find((row) => row.name === 'notion_users') ?? null)
-
-      candidates.push({
+      return [{
         extracted: {
           token_v2: extractValueFromDecrypted(rawToken),
-          ...(userId ? { user_id: userId } : {}),
-          ...(userIds.length > 0 ? { user_ids: userIds } : {}),
         },
-        lastAccessUtc: tokenRow.last_access_utc ?? 0,
-      })
-      segment = []
+        lastAccessUtc: row.last_access_utc ?? 0,
+        tokenIndex: index,
+      }]
+    })
+
+    const chooseCandidateIndex = (rowIndex: number, rowLastAccessUtc: number): number | null => {
+      let newerCandidateIndex = -1
+      for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+        if (candidates[candidateIndex].tokenIndex < rowIndex) {
+          newerCandidateIndex = candidateIndex
+        }
+      }
+      const olderCandidateIndex = candidates.findIndex((candidate) => candidate.tokenIndex > rowIndex)
+
+      if (newerCandidateIndex === -1 && olderCandidateIndex === -1) {
+        return null
+      }
+
+      if (newerCandidateIndex === -1) {
+        return olderCandidateIndex
+      }
+
+      if (olderCandidateIndex === -1) {
+        return newerCandidateIndex
+      }
+
+      const newerDistance = Math.abs(candidates[newerCandidateIndex].lastAccessUtc - rowLastAccessUtc)
+      const olderDistance = Math.abs(candidates[olderCandidateIndex].lastAccessUtc - rowLastAccessUtc)
+
+      return newerDistance <= olderDistance ? newerCandidateIndex : olderCandidateIndex
     }
 
-    for (const row of rows) {
-      if (!row) continue
-
+    normalizedRows.forEach((row, rowIndex) => {
       if (row.name === 'token_v2') {
-        flushSegment()
-        segment = [row]
-        continue
+        return
       }
 
-      if (segment.length > 0) {
-        segment.push(row)
+      const candidateIndex = chooseCandidateIndex(rowIndex, row.last_access_utc ?? 0)
+      if (candidateIndex === null) {
+        return
       }
-    }
 
-    flushSegment()
-    return candidates
+      const candidate = candidates[candidateIndex]
+      if (row.name === 'notion_user_id' && !candidate.extracted.user_id) {
+        const rawUserId = this.resolveCookieValue(row)
+        const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : null
+        if (userId) {
+          candidate.extracted.user_id = userId
+        }
+      }
+
+      if (row.name === 'notion_users' && !candidate.extracted.user_ids) {
+        const userIds = this.parseUserIds(row)
+        if (userIds.length > 0) {
+          candidate.extracted.user_ids = userIds
+        }
+      }
+    })
+
+    return candidates.map(({ tokenIndex: _tokenIndex, ...candidate }) => candidate)
   }
 
   private parseUserIds(row: CookieRow): string[] {

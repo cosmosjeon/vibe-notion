@@ -729,6 +729,70 @@ describe('BrowserTokenExtractor', () => {
     ])
   })
 
+  test('extractAll does not attach interleaved metadata to the wrong browser token', async () => {
+    const homeBase = mkdtempSync(join(tmpdir(), 'browser-interleaved-'))
+    tempDirs.push(homeBase)
+
+    const profileDir = createBrowserProfile(homeBase, 'TestBrowser', 'Default')
+    const cookiePath = join(profileDir, 'Cookies')
+
+    createCookiesDb(cookiePath, [
+      {
+        name: 'token_v2',
+        value: 'v02%3Anewer-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 200,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 199,
+      },
+      {
+        name: 'token_v2',
+        value: 'v02%3Aolder-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 198,
+      },
+      {
+        name: 'notion_users',
+        value: '["user-old","user-old-2"]',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 197,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 196,
+      },
+    ])
+
+    class TestExtractor extends BrowserTokenExtractor {
+      override getBrowserCookiePaths(): string[] {
+        return [cookiePath]
+      }
+    }
+
+    const extractor = new TestExtractor('darwin')
+    const result = await extractor.extractAll()
+
+    expect(result).toEqual([
+      { token_v2: 'v02%3Anewer-token', user_id: 'user-new' },
+      {
+        token_v2: 'v02%3Aolder-token',
+        user_id: 'user-old',
+        user_ids: ['user-old', 'user-old-2'],
+      },
+    ])
+  })
+
   test('extractAll keeps the freshest duplicate token candidate', async () => {
     const homeBase = mkdtempSync(join(tmpdir(), 'browser-extract-dedupe-'))
     tempDirs.push(homeBase)

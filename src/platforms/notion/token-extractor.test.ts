@@ -395,6 +395,64 @@ describe('TokenExtractor', () => {
     ])
   })
 
+  test('extractAll does not attach interleaved metadata to the wrong app token', async () => {
+    const notionDir = mkdtempSync(join(tmpdir(), 'notion-interleaved-'))
+    tempDirs.push(notionDir)
+
+    const partitionDir = join(notionDir, 'Partitions', 'notion')
+    mkdirSync(partitionDir, { recursive: true })
+
+    createCookiesDb(join(partitionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Anewer-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 200,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 199,
+      },
+      {
+        name: 'token_v2',
+        value: 'v02%3Aolder-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 198,
+      },
+      {
+        name: 'notion_users',
+        value: '["user-old","user-old-2"]',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 197,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 196,
+      },
+    ])
+
+    const extractor = new TokenExtractor('darwin', notionDir)
+    const extracted = await extractor.extractAll()
+
+    expect(extracted).toEqual([
+      { token_v2: 'v02%3Anewer-token', user_id: 'user-new' },
+      {
+        token_v2: 'v02%3Aolder-token',
+        user_id: 'user-old',
+        user_ids: ['user-old', 'user-old-2'],
+      },
+    ])
+  })
+
   test('extract uses fallback Cookies path when partition db does not exist', async () => {
     const notionDir = mkdtempSync(join(tmpdir(), 'notion-fallback-'))
     tempDirs.push(notionDir)
