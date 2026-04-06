@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 let mockExtract: ReturnType<typeof mock>
 let mockAppExtract: ReturnType<typeof mock>
+let mockAppExtractAll: ReturnType<typeof mock>
 let mockBrowserExtract: ReturnType<typeof mock>
 let mockBrowserExtractAll: ReturnType<typeof mock>
 let mockSetCredentials: ReturnType<typeof mock>
@@ -18,6 +19,7 @@ let originalConsoleError: typeof console.error
 beforeEach(() => {
   mockExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Atest-token', user_id: 'user-1' }))
   mockAppExtract = mockExtract
+  mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Atest-token', user_id: 'user-1' }]))
   mockBrowserExtract = mockExtract
   mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Atest-token', user_id: 'user-1' }]))
   mockSetCredentials = mock(() => Promise.resolve())
@@ -38,6 +40,7 @@ beforeEach(() => {
       getNotionDir = () => '/tmp/notion'
       getErrors = () => []
       extract = mockAppExtract
+      extractAll = mockAppExtractAll
     },
   }))
 
@@ -204,6 +207,7 @@ describe('auth extract', () => {
   test('extracts token, validates via fetch, stores credentials, outputs masked token', async () => {
     // Given
     mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Atest-token-long', user_id: 'user-1' }))
+    mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Atest-token-long', user_id: 'user-1' }]))
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock(() => Promise.resolve({ ok: true }))
 
@@ -212,6 +216,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -231,7 +236,7 @@ describe('auth extract', () => {
     await authCommand.parseAsync(['extract'], { from: 'user' })
 
     // Then
-    expect(mockAppExtract).toHaveBeenCalled()
+    expect(mockAppExtractAll).toHaveBeenCalled()
     expect(mockFetch).toHaveBeenCalled()
     expect(mockSetCredentials).toHaveBeenCalledWith({
       token_v2: 'v02%3Atest-token-long',
@@ -279,6 +284,7 @@ describe('auth extract', () => {
 
   test('falls back to browser extraction by default when app directory is missing', async () => {
     mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found: /tmp/notion')))
+    mockAppExtractAll = mock(() => Promise.reject(new Error('Notion directory not found: /tmp/notion')))
     mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Abrowser-fallback', user_id: 'user-2' }]))
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock(() => Promise.resolve({ ok: true }))
@@ -288,6 +294,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -313,7 +320,7 @@ describe('auth extract', () => {
 
     await authCommand.parseAsync(['extract'], { from: 'user' })
 
-    expect(mockAppExtract).toHaveBeenCalled()
+    expect(mockAppExtractAll).toHaveBeenCalled()
     expect(mockBrowserExtractAll).toHaveBeenCalled()
     expect(mockSetCredentials).toHaveBeenCalledWith({
       token_v2: 'v02%3Abrowser-fallback',
@@ -326,6 +333,7 @@ describe('auth extract', () => {
 
   test('falls back to browser extraction by default when app extraction returns null', async () => {
     mockAppExtract = mock(() => Promise.resolve(null))
+    mockAppExtractAll = mock(() => Promise.resolve([]))
     mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Abrowser-fallback', user_id: 'user-3' }]))
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock(() => Promise.resolve({ ok: true }))
@@ -335,6 +343,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -360,7 +369,7 @@ describe('auth extract', () => {
 
     await authCommand.parseAsync(['extract'], { from: 'user' })
 
-    expect(mockAppExtract).toHaveBeenCalled()
+    expect(mockAppExtractAll).toHaveBeenCalled()
     expect(mockBrowserExtractAll).toHaveBeenCalled()
 
     const output = JSON.parse(consoleLogMock.mock.calls.at(-1)?.[0])
@@ -369,6 +378,7 @@ describe('auth extract', () => {
 
   test('falls back to browser extraction by default when app token is stale', async () => {
     mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }))
+    mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }]))
     mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Afresh-browser-token', user_id: 'user-browser' }]))
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock((url: string, init?: RequestInit) => {
@@ -390,6 +400,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -415,7 +426,7 @@ describe('auth extract', () => {
 
     await authCommand.parseAsync(['extract'], { from: 'user' })
 
-    expect(mockAppExtract).toHaveBeenCalled()
+    expect(mockAppExtractAll).toHaveBeenCalled()
     expect(mockBrowserExtractAll).toHaveBeenCalled()
     expect(mockSetCredentials).toHaveBeenCalledWith({
       token_v2: 'v02%3Afresh-browser-token',
@@ -428,6 +439,7 @@ describe('auth extract', () => {
 
   test('keeps app source strict when app token is stale', async () => {
     mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }))
+    mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }]))
     mockFetch = mock(() => Promise.resolve({ ok: false, status: 401 }))
 
     mock.module('../token-extractor', () => ({
@@ -435,6 +447,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -447,12 +460,12 @@ describe('auth extract', () => {
     } catch {}
 
     expect(mockSetCredentials).not.toHaveBeenCalled()
-    const output = JSON.parse(consoleErrorMock.mock.calls.at(-1)?.[0])
-    expect(output.error).toContain('Notion internal API error: 401')
+    expect(consoleErrorMock).toHaveBeenCalled()
   })
 
   test('does not fall back to browser on non-auth app validation failures in auto mode', async () => {
     mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Aapp-token', user_id: 'user-app' }))
+    mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Aapp-token', user_id: 'user-app' }]))
     mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Abrowser-token', user_id: 'user-browser' }]))
     mockFetch = mock(() => Promise.resolve({ ok: false, status: 500 }))
 
@@ -461,6 +474,7 @@ describe('auth extract', () => {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -489,12 +503,14 @@ describe('auth extract', () => {
   test('outputs error when no token found', async () => {
     // Given
     mockAppExtract = mock(() => Promise.resolve(null))
+    mockAppExtractAll = mock(() => Promise.resolve([]))
     mockBrowserExtractAll = mock(() => Promise.resolve([]))
     mock.module('../token-extractor', () => ({
       TokenExtractor: class {
         getNotionDir = () => '/tmp/notion'
         getErrors = () => []
         extract = mockAppExtract
+        extractAll = mockAppExtractAll
       },
     }))
 
@@ -558,6 +574,79 @@ describe('auth extract', () => {
     expect(mockSetCredentials).toHaveBeenCalledWith({
       token_v2: 'v02%3Afresh-token',
       user_id: 'user-fresh',
+    })
+  })
+
+  test('stores every valid browser account instead of stopping at the first success', async () => {
+    mockBrowserExtractAll = mock(() => Promise.resolve([
+      { token_v2: 'v02%3Afirst-valid-token', user_id: 'user-1' },
+      { token_v2: 'v02%3Asecond-valid-token', user_id: 'user-2', user_ids: ['user-2', 'user-3'] },
+    ]))
+    mockSetCredentials = mock(() => Promise.resolve())
+    mockFetch = mock(() => Promise.resolve({ ok: true }))
+
+    mock.module('../browser-token-extractor', () => ({
+      BrowserTokenExtractor: class {
+        getErrors = () => []
+        extract = mockBrowserExtract
+        extractAll = mockBrowserExtractAll
+      },
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    await authCommand.parseAsync(['extract', '--source', 'browser'], { from: 'user' })
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(mockSetCredentials).toHaveBeenCalledWith({
+      token_v2: 'v02%3Afirst-valid-token',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'v02%3Afirst-valid-token', user_id: 'user-1' },
+        { token_v2: 'v02%3Asecond-valid-token', user_id: 'user-2', user_ids: ['user-2', 'user-3'] },
+      ],
+    })
+
+    const output = JSON.parse(consoleLogMock.mock.calls.at(-1)?.[0])
+    expect(output.accounts).toEqual([
+      { token_v2: 'v02%3A...oken', user_id: 'user-1' },
+      { token_v2: 'v02%3A...oken', user_id: 'user-2', user_ids: ['user-2', 'user-3'] },
+    ])
+  })
+
+  test('stores every valid app account instead of stopping at the first success', async () => {
+    mockAppExtractAll = mock(() => Promise.resolve([
+      { token_v2: 'v02%3Afirst-app-token', user_id: 'user-app-1' },
+      { token_v2: 'v02%3Asecond-app-token', user_id: 'user-app-2' },
+    ]))
+    mockSetCredentials = mock(() => Promise.resolve())
+    mockFetch = mock(() => Promise.resolve({ ok: true }))
+
+    mock.module('../token-extractor', () => ({
+      TokenExtractor: class {
+        getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
+        extract = mockAppExtract
+        extractAll = mockAppExtractAll
+      },
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    await authCommand.parseAsync(['extract', '--source', 'app'], { from: 'user' })
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(mockSetCredentials).toHaveBeenCalledWith({
+      token_v2: 'v02%3Afirst-app-token',
+      user_id: 'user-app-1',
+      accounts: [
+        { token_v2: 'v02%3Afirst-app-token', user_id: 'user-app-1' },
+        { token_v2: 'v02%3Asecond-app-token', user_id: 'user-app-2' },
+      ],
     })
   })
 

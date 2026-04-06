@@ -2,6 +2,15 @@ import { Command } from 'commander'
 
 import { BrowserTokenExtractor } from '@/platforms/notion/browser-token-extractor'
 import { CredentialManager } from '@/platforms/notion/credential-manager'
+import {
+  maskAccount,
+  maskToken,
+  TokenValidationError,
+  validateCandidates,
+  validateTokenV2,
+  withStoredAccounts,
+  type ExtractionOutcome,
+} from '@/platforms/notion/extracted-token-validation'
 import { type ExtractedToken, TokenExtractor } from '@/platforms/notion/token-extractor'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatOutput } from '@/shared/utils/output'
@@ -22,42 +31,7 @@ function shouldFallbackToBrowser(error: unknown): boolean {
   return error.message.includes('Notion directory not found')
 }
 
-function maskToken(token: string): string {
-  if (token.length <= 10) {
-    return '***'
-  }
-  return `${token.slice(0, 6)}...${token.slice(-4)}`
-}
-
-class TokenValidationError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
-
-async function validateTokenV2(tokenV2: string): Promise<void> {
-  const response = await fetch('https://www.notion.so/api/v3/getSpaces', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      cookie: `token_v2=${tokenV2}`,
-    },
-    body: '{}',
-  })
-
-  if (!response.ok) {
-    throw new TokenValidationError(response.status, `Notion internal API error: ${response.status}`)
-  }
-}
-
-function isInvalidTokenError(error: unknown): error is TokenValidationError {
-  return error instanceof TokenValidationError && (error.status === 401 || error.status === 403)
-}
-
-async function extractFromApp(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[]; validated: false }> {
+async function collectCandidatesFromApp(options: CommandOptions): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
   const extractor = new TokenExtractor(undefined, undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -81,11 +55,14 @@ async function extractFromApp(options: CommandOptions): Promise<{ extracted: Ext
     console.error(`[debug] Notion directory: ${extractor.getNotionDir()}`)
   }
 
-  const extracted = await extractor.extract()
-  return { extracted, errors: extractor.getErrors(), validated: false }
+  const candidates = await ('extractAll' in extractor && typeof extractor.extractAll === 'function'
+    ? await extractor.extractAll()
+    : extractor.extract().then((extracted) => (extracted ? [extracted] : [])))
+
+  return { candidates, errors: extractor.getErrors() }
 }
 
-async function extractFromBrowser(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[]; validated: true }> {
+async function collectCandidatesFromBrowser(options: CommandOptions): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
   const extractor = new BrowserTokenExtractor(undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -108,53 +85,30 @@ async function extractFromBrowser(options: CommandOptions): Promise<{ extracted:
     : candidates
       ? [candidates]
       : []
-  const errors = extractor.getErrors()
 
-  for (const candidate of extractedCandidates) {
-    try {
-      await validateTokenV2(candidate.token_v2)
-      return { extracted: candidate, errors, validated: true }
-    } catch (error) {
-      if (!isInvalidTokenError(error)) {
-        throw error
-      }
-
-      errors.push(
-        `validateTokenV2: rejected extracted browser token ${maskToken(candidate.token_v2)} with status ${error.status}`,
-      )
-    }
-  }
-
-  return { extracted: null, errors, validated: true }
+  return { candidates: extractedCandidates, errors: extractor.getErrors() }
 }
 
-async function extractAutomatically(
-  options: CommandOptions,
-): Promise<{ extracted: ExtractedToken | null; errors: string[]; source: 'app' | 'browser'; validated: boolean }> {
-  const appResult: { extracted: ExtractedToken | null; errors: string[]; validated: false } = {
-    extracted: null,
-    errors: [],
-    validated: false,
-  }
+async function extractFromApp(options: CommandOptions): Promise<ExtractionOutcome> {
+  const { candidates, errors } = await collectCandidatesFromApp(options)
+  const validation = await validateCandidates(candidates, 'app')
+  return { ...validation, errors: [...errors, ...validation.errors] }
+}
+
+async function extractFromBrowser(options: CommandOptions): Promise<ExtractionOutcome> {
+  const { candidates, errors } = await collectCandidatesFromBrowser(options)
+  const validation = await validateCandidates(candidates, 'browser')
+  return { ...validation, errors: [...errors, ...validation.errors] }
+}
+
+async function extractAutomatically(options: CommandOptions): Promise<ExtractionOutcome> {
+  let appErrors: string[] = []
 
   try {
     const result = await extractFromApp(options)
-    appResult.extracted = result.extracted
-    appResult.errors = result.errors
+    appErrors = result.errors
     if (result.extracted) {
-      try {
-        await validateTokenV2(result.extracted.token_v2)
-        return { ...result, source: 'app', validated: true }
-      } catch (error) {
-        if (!isInvalidTokenError(error)) {
-          throw error
-        }
-
-        appResult.errors = [
-          ...appResult.errors,
-          `validateTokenV2: rejected extracted app token ${maskToken(result.extracted.token_v2)} with status ${error.status}`,
-        ]
-      }
+      return result
     }
   } catch (error) {
     if (!shouldFallbackToBrowser(error)) {
@@ -162,17 +116,16 @@ async function extractAutomatically(
     }
 
     const message = error instanceof Error ? error.message : String(error)
-    appResult.errors = [
+    appErrors = [
       message,
-      ...appResult.errors,
+      ...appErrors,
     ]
   }
 
   const browserResult = await extractFromBrowser(options)
   return {
     ...browserResult,
-    errors: [...appResult.errors, ...browserResult.errors],
-    source: 'browser',
+    errors: [...appErrors, ...browserResult.errors],
   }
 }
 
@@ -180,11 +133,11 @@ async function extractAction(options: CommandOptions): Promise<void> {
   try {
     const source = parseSource(options.source)
     const result = source === 'browser'
-      ? { ...(await extractFromBrowser(options)), source: 'browser' as const }
+      ? await extractFromBrowser(options)
       : source === 'app'
-        ? { ...(await extractFromApp(options)), source: 'app' as const }
+        ? await extractFromApp(options)
         : await extractAutomatically(options)
-    const { extracted, errors } = result
+    const { extracted, errors, accounts } = result
 
     if (options.debug) {
       for (const err of errors) {
@@ -214,12 +167,8 @@ async function extractAction(options: CommandOptions): Promise<void> {
       console.error(`[debug] token_v2 extracted: ${maskToken(extracted.token_v2)}`)
     }
 
-    if (source !== 'auto' && !result.validated) {
-      await validateTokenV2(extracted.token_v2)
-    }
-
     const manager = new CredentialManager()
-    await manager.setCredentials(extracted)
+    await manager.setCredentials(withStoredAccounts(extracted, accounts))
 
     console.log(
       formatOutput(
@@ -228,6 +177,7 @@ async function extractAction(options: CommandOptions): Promise<void> {
           token_v2: maskToken(extracted.token_v2),
           user_id: extracted.user_id,
           user_ids: extracted.user_ids,
+          accounts: accounts.map(maskAccount),
           valid: true,
         },
         options.pretty,

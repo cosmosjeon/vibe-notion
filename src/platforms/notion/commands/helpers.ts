@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { BrowserTokenExtractor } from '@/platforms/notion/browser-token-extractor'
 import { getActiveUserId, internalRequest, setActiveSpaceId, setActiveUserId } from '@/platforms/notion/client'
 import { CredentialManager, type NotionCredentials } from '@/platforms/notion/credential-manager'
+import { validateCandidates, withStoredAccounts } from '@/platforms/notion/extracted-token-validation'
 import { collectBacklinkUserIds, getRecordValue } from '@/platforms/notion/formatters'
 import { TokenExtractor } from '@/platforms/notion/token-extractor'
 
@@ -43,10 +44,14 @@ function shouldFallbackToBrowser(error: unknown): boolean {
 async function autoExtract(manager: CredentialManager): Promise<NotionCredentials | null> {
   try {
     const appExtractor = new TokenExtractor()
-    const appResult = await appExtractor.extract()
-    if (appResult) {
-      await manager.setCredentials(appResult)
-      return appResult
+    const appAccounts = await ('extractAll' in appExtractor && typeof appExtractor.extractAll === 'function'
+      ? await appExtractor.extractAll()
+      : appExtractor.extract().then((extracted) => (extracted ? [extracted] : [])))
+    const appValidation = await validateCandidates(appAccounts, 'app')
+    if (appValidation.extracted) {
+      const storedCredentials = withStoredAccounts(appValidation.extracted, appValidation.accounts)
+      await manager.setCredentials(storedCredentials)
+      return storedCredentials
     }
   } catch (error) {
     if (!shouldFallbackToBrowser(error)) {
@@ -55,10 +60,14 @@ async function autoExtract(manager: CredentialManager): Promise<NotionCredential
   }
 
   const browserExtractor = new BrowserTokenExtractor()
-  const browserResult = await browserExtractor.extract()
-  if (browserResult) {
-    await manager.setCredentials(browserResult)
-    return browserResult
+  const browserAccounts = await ('extractAll' in browserExtractor && typeof browserExtractor.extractAll === 'function'
+    ? await browserExtractor.extractAll()
+    : browserExtractor.extract().then((extracted) => (extracted ? [extracted] : [])))
+  const browserValidation = await validateCandidates(browserAccounts, 'browser')
+  if (browserValidation.extracted) {
+    const storedCredentials = withStoredAccounts(browserValidation.extracted, browserValidation.accounts)
+    await manager.setCredentials(storedCredentials)
+    return storedCredentials
   }
 
   return null
