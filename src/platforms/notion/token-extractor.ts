@@ -26,11 +26,18 @@ type CookieRow = {
   name: string
   value?: string
   encrypted_value?: Uint8Array | Buffer
+  last_access_utc?: number
 } | null
+
+type ExtractedTokenCandidate = {
+  extracted: ExtractedToken
+  lastAccessUtc: number
+}
 
 type BetterSqlite3Database = {
   prepare(sql: string): {
     get(...params: unknown[]): unknown
+    all(...params: unknown[]): unknown[]
   }
   close(): void
 }
@@ -43,6 +50,11 @@ export interface ExtractedToken {
   token_v2: string
   user_id?: string
   user_ids?: string[]
+  accounts?: Array<{
+    token_v2: string
+    user_id?: string
+    user_ids?: string[]
+  }>
 }
 
 export class TokenExtractor {
@@ -73,7 +85,17 @@ export class TokenExtractor {
       throw new Error(message)
     }
 
-    return this.extractCookieFromSQLite()
+    const [firstCandidate] = await this.extractAll()
+    return firstCandidate ?? null
+  }
+
+  async extractAll(): Promise<ExtractedToken[]> {
+    if (!existsSync(this.notionDir)) {
+      const message = this.getMissingNotionDirMessage()
+      throw new Error(message)
+    }
+
+    return this.extractCookiesFromSQLite()
   }
 
   tryDecryptCookie(encrypted: Buffer): string | null {
@@ -235,13 +257,15 @@ export class TokenExtractor {
     }
   }
 
-  private async extractCookieFromSQLite(): Promise<ExtractedToken | null> {
+  private async extractCookiesFromSQLite(): Promise<ExtractedToken[]> {
     const cookiePaths = [
       join(this.notionDir, 'Partitions', 'notion', 'Network', 'Cookies'),
       join(this.notionDir, 'Partitions', 'notion', 'Cookies'),
       join(this.notionDir, 'Network', 'Cookies'),
       join(this.notionDir, 'Cookies'),
     ]
+
+    const candidatesByToken = new Map<string, ExtractedTokenCandidate>()
 
     for (const dbPath of cookiePaths) {
       const exists = existsSync(dbPath)
@@ -252,16 +276,25 @@ export class TokenExtractor {
         continue
       }
 
-      const extracted = this.readTokenFromDb(dbPath)
+      const extractedCandidates = this.readTokensFromDb(dbPath)
       if (this.debug) {
-        console.error(`[debug] Cookie DB ${dbPath}: ${extracted ? 'token_v2 found' : 'token_v2 not found'}`)
+        console.error(
+          `[debug] Cookie DB ${dbPath}: ${extractedCandidates.length > 0 ? `${extractedCandidates.length} token_v2 candidates found` : 'token_v2 not found'}`,
+        )
       }
-      if (extracted) {
-        return extracted
+
+      for (const extracted of extractedCandidates) {
+        const existing = candidatesByToken.get(extracted.extracted.token_v2)
+        if (!existing || extracted.lastAccessUtc > existing.lastAccessUtc) {
+          candidatesByToken.set(extracted.extracted.token_v2, extracted)
+        }
       }
     }
 
-    return null
+    const candidates = [...candidatesByToken.values()]
+    candidates.sort((left, right) => right.lastAccessUtc - left.lastAccessUtc)
+
+    return candidates.map((candidate) => candidate.extracted)
   }
 
   protected getNotionDirCandidates(): string[] {
@@ -292,7 +325,7 @@ export class TokenExtractor {
     return `Notion directory not found: ${this.notionDir} (checked: ${candidates.join(', ')})`
   }
 
-  private readTokenFromDb(dbPath: string): ExtractedToken | null {
+  private readTokensFromDb(dbPath: string): ExtractedTokenCandidate[] {
     const tempDbPath = join(tmpdir(), `notion-cookies-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
 
     try {
@@ -305,24 +338,18 @@ export class TokenExtractor {
         )
       }
       this.extractionErrors.push(`readTokenFromDb: failed to copy cookie DB ${dbPath}: ${(error as Error).message}`)
-      return null
+      return []
     }
 
     try {
-      const tokenSql = `SELECT name, value, encrypted_value FROM cookies WHERE name = 'token_v2' AND host_key LIKE '%notion%' ORDER BY last_access_utc DESC LIMIT 1`
-      const userSql = `SELECT name, value, encrypted_value FROM cookies WHERE name = 'notion_user_id' AND host_key LIKE '%notion%' ORDER BY last_access_utc DESC LIMIT 1`
-      const usersSql = `SELECT name, value, encrypted_value FROM cookies WHERE name = 'notion_users' AND host_key LIKE '%notion%' ORDER BY last_access_utc DESC LIMIT 1`
+      const sql = `SELECT name, value, encrypted_value, last_access_utc FROM cookies WHERE name IN ('token_v2', 'notion_user_id', 'notion_users') AND host_key LIKE '%notion%' ORDER BY last_access_utc DESC`
 
-      let tokenRow: CookieRow
-      let userRow: CookieRow
-      let usersRow: CookieRow
+      let rows: CookieRow[]
 
       if (typeof globalThis.Bun !== 'undefined') {
         const { Database } = require('bun:sqlite')
         const db = new Database(tempDbPath, { readonly: true })
-        tokenRow = db.query(tokenSql).get() as CookieRow
-        userRow = db.query(userSql).get() as CookieRow
-        usersRow = db.query(usersSql).get() as CookieRow
+        rows = db.query(sql).all() as CookieRow[]
         db.close()
       } else {
         let Database: BetterSqlite3Constructor
@@ -332,33 +359,17 @@ export class TokenExtractor {
           throw new Error('better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3')
         }
         const db = new Database(tempDbPath, { readonly: true })
-        tokenRow = db.prepare(tokenSql).get() as CookieRow
-        userRow = db.prepare(userSql).get() as CookieRow
-        usersRow = db.prepare(usersSql).get() as CookieRow
+        rows = db.prepare(sql).all() as CookieRow[]
         db.close()
       }
 
-      const rawToken = this.resolveCookieValue(tokenRow)
-      if (!rawToken) {
-        return null
-      }
-      const token = extractValueFromDecrypted(rawToken)
-
-      const rawUserId = this.resolveCookieValue(userRow)
-      const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : null
-      const userIds = this.parseUserIds(usersRow)
-
-      return {
-        token_v2: token,
-        ...(userId ? { user_id: userId } : {}),
-        ...(userIds.length > 0 ? { user_ids: userIds } : {}),
-      }
+      return this.buildCandidatesFromRows(rows)
     } catch (error) {
       if (error instanceof Error && error.message.includes('better-sqlite3')) {
         throw error
       }
       this.extractionErrors.push(`readTokenFromDb: ${(error as Error).message}`)
-      return null
+      return []
     } finally {
       try {
         rmSync(tempDbPath, { force: true })
@@ -366,6 +377,58 @@ export class TokenExtractor {
         // Best-effort cleanup — temp file may already be removed
       }
     }
+  }
+
+  private buildCandidatesFromRows(rows: CookieRow[]): ExtractedTokenCandidate[] {
+    const candidates: ExtractedTokenCandidate[] = []
+    let segment: NonNullable<CookieRow>[] = []
+
+    const flushSegment = () => {
+      if (segment.length === 0) return
+
+      const tokenRow = segment.find((row) => row.name === 'token_v2')
+      if (!tokenRow) {
+        segment = []
+        return
+      }
+
+      const rawToken = this.resolveCookieValue(tokenRow)
+      if (!rawToken) {
+        segment = []
+        return
+      }
+
+      const rawUserId = this.resolveCookieValue(segment.find((row) => row.name === 'notion_user_id') ?? null)
+      const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : null
+      const userIds = this.parseUserIds(segment.find((row) => row.name === 'notion_users') ?? null)
+
+      candidates.push({
+        extracted: {
+          token_v2: extractValueFromDecrypted(rawToken),
+          ...(userId ? { user_id: userId } : {}),
+          ...(userIds.length > 0 ? { user_ids: userIds } : {}),
+        },
+        lastAccessUtc: tokenRow.last_access_utc ?? 0,
+      })
+      segment = []
+    }
+
+    for (const row of rows) {
+      if (!row) continue
+
+      if (row.name === 'token_v2') {
+        flushSegment()
+        segment = [row]
+        continue
+      }
+
+      if (segment.length > 0) {
+        segment.push(row)
+      }
+    }
+
+    flushSegment()
+    return candidates
   }
 
   private parseUserIds(row: CookieRow): string[] {

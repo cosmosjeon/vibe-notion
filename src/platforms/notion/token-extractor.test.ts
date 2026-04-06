@@ -287,6 +287,114 @@ describe('TokenExtractor', () => {
     expect(extracted).toEqual({ token_v2: 'v02%3Anetwork-token' })
   })
 
+  test('extractAll returns tokens from multiple app cookie databases sorted by recency', async () => {
+    const notionDir = mkdtempSync(join(tmpdir(), 'notion-extract-all-'))
+    tempDirs.push(notionDir)
+
+    const networkDir = join(notionDir, 'Partitions', 'notion', 'Network')
+    mkdirSync(networkDir, { recursive: true })
+    createCookiesDb(join(networkDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Anewer-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 20,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 19,
+      },
+    ])
+
+    createCookiesDb(join(notionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Aolder-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 10,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 9,
+      },
+    ])
+
+    const extractor = new TokenExtractor('darwin', notionDir)
+    const extracted = await extractor.extractAll()
+
+    expect(extracted).toEqual([
+      { token_v2: 'v02%3Anewer-token', user_id: 'user-new' },
+      { token_v2: 'v02%3Aolder-token', user_id: 'user-old' },
+    ])
+  })
+
+  test('extractAll keeps the freshest duplicate app token candidate', async () => {
+    const notionDir = mkdtempSync(join(tmpdir(), 'notion-extract-dedupe-'))
+    tempDirs.push(notionDir)
+
+    const networkDir = join(notionDir, 'Partitions', 'notion', 'Network')
+    mkdirSync(networkDir, { recursive: true })
+    createCookiesDb(join(networkDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Ashared-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 30,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 29,
+      },
+      {
+        name: 'notion_users',
+        value: '["user-new","user-extra"]',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 28,
+      },
+    ])
+
+    createCookiesDb(join(notionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Ashared-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 10,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 9,
+      },
+    ])
+
+    const extractor = new TokenExtractor('darwin', notionDir)
+    const extracted = await extractor.extractAll()
+
+    expect(extracted).toEqual([
+      {
+        token_v2: 'v02%3Ashared-token',
+        user_id: 'user-new',
+        user_ids: ['user-new', 'user-extra'],
+      },
+    ])
+  })
+
   test('extract uses fallback Cookies path when partition db does not exist', async () => {
     const notionDir = mkdtempSync(join(tmpdir(), 'notion-fallback-'))
     tempDirs.push(notionDir)
