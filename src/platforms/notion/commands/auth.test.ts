@@ -367,6 +367,125 @@ describe('auth extract', () => {
     expect(output.source).toBe('browser')
   })
 
+  test('falls back to browser extraction by default when app token is stale', async () => {
+    mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }))
+    mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Afresh-browser-token', user_id: 'user-browser' }]))
+    mockSetCredentials = mock(() => Promise.resolve())
+    mockFetch = mock((url: string, init?: RequestInit) => {
+      const cookieHeader = init?.headers && 'cookie' in init.headers
+        ? init.headers.cookie
+        : init?.headers instanceof Headers
+          ? init.headers.get('cookie')
+          : undefined
+
+      if (cookieHeader?.includes('stale-app-token')) {
+        return Promise.resolve({ ok: false, status: 401 })
+      }
+
+      return Promise.resolve({ ok: true })
+    })
+
+    mock.module('../token-extractor', () => ({
+      TokenExtractor: class {
+        getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
+        extract = mockAppExtract
+      },
+    }))
+
+    mock.module('../browser-token-extractor', () => ({
+      BrowserTokenExtractor: class {
+        getErrors = () => []
+        extract = mockBrowserExtract
+        extractAll = mockBrowserExtractAll
+      },
+    }))
+
+    mock.module('../credential-manager', () => ({
+      CredentialManager: class {
+        setCredentials = mockSetCredentials
+        getCredentials = mockGetCredentials
+        remove = mockRemove
+      }
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    await authCommand.parseAsync(['extract'], { from: 'user' })
+
+    expect(mockAppExtract).toHaveBeenCalled()
+    expect(mockBrowserExtractAll).toHaveBeenCalled()
+    expect(mockSetCredentials).toHaveBeenCalledWith({
+      token_v2: 'v02%3Afresh-browser-token',
+      user_id: 'user-browser',
+    })
+
+    const output = JSON.parse(consoleLogMock.mock.calls.at(-1)?.[0])
+    expect(output.source).toBe('browser')
+  })
+
+  test('keeps app source strict when app token is stale', async () => {
+    mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }))
+    mockFetch = mock(() => Promise.resolve({ ok: false, status: 401 }))
+
+    mock.module('../token-extractor', () => ({
+      TokenExtractor: class {
+        getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
+        extract = mockAppExtract
+      },
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    try {
+      await authCommand.parseAsync(['extract', '--source', 'app'], { from: 'user' })
+    } catch {}
+
+    expect(mockSetCredentials).not.toHaveBeenCalled()
+    const output = JSON.parse(consoleErrorMock.mock.calls.at(-1)?.[0])
+    expect(output.error).toContain('Notion internal API error: 401')
+  })
+
+  test('does not fall back to browser on non-auth app validation failures in auto mode', async () => {
+    mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Aapp-token', user_id: 'user-app' }))
+    mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Abrowser-token', user_id: 'user-browser' }]))
+    mockFetch = mock(() => Promise.resolve({ ok: false, status: 500 }))
+
+    mock.module('../token-extractor', () => ({
+      TokenExtractor: class {
+        getNotionDir = () => '/tmp/notion'
+        getErrors = () => []
+        extract = mockAppExtract
+      },
+    }))
+
+    mock.module('../browser-token-extractor', () => ({
+      BrowserTokenExtractor: class {
+        getErrors = () => []
+        extract = mockBrowserExtract
+        extractAll = mockBrowserExtractAll
+      },
+    }))
+
+    globalThis.fetch = mockFetch as unknown as typeof fetch
+
+    const { authCommand } = await import('./auth')
+
+    try {
+      await authCommand.parseAsync(['extract'], { from: 'user' })
+    } catch {}
+
+    expect(mockBrowserExtractAll).not.toHaveBeenCalled()
+    expect(mockSetCredentials).not.toHaveBeenCalled()
+    const output = JSON.parse(consoleErrorMock.mock.calls.at(-1)?.[0])
+    expect(output.error).toContain('Notion internal API error: 500')
+  })
+
   test('outputs error when no token found', async () => {
     // Given
     mockAppExtract = mock(() => Promise.resolve(null))

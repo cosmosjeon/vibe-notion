@@ -142,7 +142,19 @@ async function extractAutomatically(
     appResult.extracted = result.extracted
     appResult.errors = result.errors
     if (result.extracted) {
-      return { ...result, source: 'app' }
+      try {
+        await validateTokenV2(result.extracted.token_v2)
+        return { ...result, source: 'app', validated: true }
+      } catch (error) {
+        if (!isInvalidTokenError(error)) {
+          throw error
+        }
+
+        appResult.errors = [
+          ...appResult.errors,
+          `validateTokenV2: rejected extracted app token ${maskToken(result.extracted.token_v2)} with status ${error.status}`,
+        ]
+      }
     }
   } catch (error) {
     if (!shouldFallbackToBrowser(error)) {
@@ -202,7 +214,7 @@ async function extractAction(options: CommandOptions): Promise<void> {
       console.error(`[debug] token_v2 extracted: ${maskToken(extracted.token_v2)}`)
     }
 
-    if (!result.validated) {
+    if (source !== 'auto' && !result.validated) {
       await validateTokenV2(extracted.token_v2)
     }
 
