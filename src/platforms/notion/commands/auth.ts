@@ -53,7 +53,11 @@ async function validateTokenV2(tokenV2: string): Promise<void> {
   }
 }
 
-async function extractFromApp(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[] }> {
+function isInvalidTokenError(error: unknown): error is TokenValidationError {
+  return error instanceof TokenValidationError && (error.status === 401 || error.status === 403)
+}
+
+async function extractFromApp(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[]; validated: false }> {
   const extractor = new TokenExtractor(undefined, undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -78,10 +82,10 @@ async function extractFromApp(options: CommandOptions): Promise<{ extracted: Ext
   }
 
   const extracted = await extractor.extract()
-  return { extracted, errors: extractor.getErrors() }
+  return { extracted, errors: extractor.getErrors(), validated: false }
 }
 
-async function extractFromBrowser(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[] }> {
+async function extractFromBrowser(options: CommandOptions): Promise<{ extracted: ExtractedToken | null; errors: string[]; validated: true }> {
   const extractor = new BrowserTokenExtractor(undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -96,16 +100,41 @@ async function extractFromBrowser(options: CommandOptions): Promise<{ extracted:
     console.log('')
   }
 
-  const extracted = await extractor.extract()
-  return { extracted, errors: extractor.getErrors() }
+  const candidates = 'extractAll' in extractor && typeof extractor.extractAll === 'function'
+    ? await extractor.extractAll()
+    : await extractor.extract()
+  const extractedCandidates = Array.isArray(candidates)
+    ? candidates
+    : candidates
+      ? [candidates]
+      : []
+  const errors = extractor.getErrors()
+
+  for (const candidate of extractedCandidates) {
+    try {
+      await validateTokenV2(candidate.token_v2)
+      return { extracted: candidate, errors, validated: true }
+    } catch (error) {
+      if (!isInvalidTokenError(error)) {
+        throw error
+      }
+
+      errors.push(
+        `validateTokenV2: rejected extracted browser token ${maskToken(candidate.token_v2)} with status ${error.status}`,
+      )
+    }
+  }
+
+  return { extracted: null, errors, validated: true }
 }
 
 async function extractAutomatically(
   options: CommandOptions,
-): Promise<{ extracted: ExtractedToken | null; errors: string[]; source: 'app' | 'browser' }> {
-  const appResult: { extracted: ExtractedToken | null; errors: string[] } = {
+): Promise<{ extracted: ExtractedToken | null; errors: string[]; source: 'app' | 'browser'; validated: boolean }> {
+  const appResult: { extracted: ExtractedToken | null; errors: string[]; validated: false } = {
     extracted: null,
     errors: [],
+    validated: false,
   }
 
   try {
@@ -113,7 +142,19 @@ async function extractAutomatically(
     appResult.extracted = result.extracted
     appResult.errors = result.errors
     if (result.extracted) {
-      return { ...result, source: 'app' }
+      try {
+        await validateTokenV2(result.extracted.token_v2)
+        return { ...result, source: 'app', validated: true }
+      } catch (error) {
+        if (!isInvalidTokenError(error)) {
+          throw error
+        }
+
+        appResult.errors = [
+          ...appResult.errors,
+          `validateTokenV2: rejected extracted app token ${maskToken(result.extracted.token_v2)} with status ${error.status}`,
+        ]
+      }
     }
   } catch (error) {
     if (!shouldFallbackToBrowser(error)) {
@@ -173,7 +214,9 @@ async function extractAction(options: CommandOptions): Promise<void> {
       console.error(`[debug] token_v2 extracted: ${maskToken(extracted.token_v2)}`)
     }
 
-    await validateTokenV2(extracted.token_v2)
+    if (source !== 'auto' && !result.validated) {
+      await validateTokenV2(extracted.token_v2)
+    }
 
     const manager = new CredentialManager()
     await manager.setCredentials(extracted)

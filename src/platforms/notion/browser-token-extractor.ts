@@ -28,6 +28,11 @@ type CookieRow = {
   last_access_utc?: number
 }
 
+type ExtractedBrowserTokenCandidate = {
+  extracted: ExtractedToken
+  lastAccessUtc: number
+}
+
 type BetterSqlite3Database = {
   prepare(sql: string): {
     get(...params: unknown[]): unknown
@@ -145,7 +150,18 @@ export class BrowserTokenExtractor {
   }
 
   async extract(): Promise<ExtractedToken | null> {
+    const [firstCandidate] = await this.extractAll()
+
+    if (!firstCandidate && this.debug) {
+      console.error('[debug] No Notion cookies found in any browser profile')
+    }
+
+    return firstCandidate ?? null
+  }
+
+  async extractAll(): Promise<ExtractedToken[]> {
     const cookiePaths = this.getBrowserCookiePaths()
+    const candidatesByToken = new Map<string, ExtractedBrowserTokenCandidate>()
 
     for (const cookiePath of cookiePaths) {
       if (!existsSync(cookiePath)) continue
@@ -156,18 +172,21 @@ export class BrowserTokenExtractor {
 
       const extracted = this.copyAndExtract(cookiePath)
       if (extracted) {
+        const existing = candidatesByToken.get(extracted.extracted.token_v2)
+        if (!existing || extracted.lastAccessUtc > existing.lastAccessUtc) {
+          candidatesByToken.set(extracted.extracted.token_v2, extracted)
+        }
+
         if (this.debug) {
           console.error(`[debug] Found Notion token in: ${cookiePath}`)
         }
-        return extracted
       }
     }
 
-    if (this.debug) {
-      console.error('[debug] No Notion cookies found in any browser profile')
-    }
+    const candidates = [...candidatesByToken.values()]
+    candidates.sort((left, right) => right.lastAccessUtc - left.lastAccessUtc)
 
-    return null
+    return candidates.map((candidate) => candidate.extracted)
   }
 
   getBrowserCookiePaths(): string[] {
@@ -212,26 +231,30 @@ export class BrowserTokenExtractor {
   }
 
   private discoverProfileDirs(browserBase: string): string[] {
-    const dirs: string[] = []
+    const dirs = new Set<string>([join(browserBase, 'Default')])
 
-    dirs.push(join(browserBase, 'Default'))
+    if (!existsSync(browserBase)) return [...dirs]
 
-    if (!existsSync(browserBase)) return dirs
+    const localStateProfiles = this.readProfilesFromLocalState(browserBase)
+    for (const profileName of localStateProfiles) {
+      dirs.add(join(browserBase, profileName))
+    }
 
     try {
       const entries = readdirSync(browserBase, { withFileTypes: true })
       for (const entry of entries) {
         if (!entry.isDirectory()) continue
-        if (!/^Profile \d+$/i.test(entry.name)) continue
-        dirs.push(join(browserBase, entry.name))
+        if (!this.isProfileDirectory(browserBase, entry.name)) continue
+        dirs.add(join(browserBase, entry.name))
       }
-    } catch {}
+    } catch (error) {
+      this.extractionErrors.push(`discoverProfileDirs: ${(error as Error).message}`)
+    }
 
-
-    return dirs
+    return [...dirs]
   }
 
-  private copyAndExtract(dbPath: string): ExtractedToken | null {
+  private copyAndExtract(dbPath: string): ExtractedBrowserTokenCandidate | null {
     const tempPath = join(tmpdir(), `notion-browser-cookies-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
 
     try {
@@ -246,11 +269,13 @@ export class BrowserTokenExtractor {
     } finally {
       try {
         rmSync(tempPath, { force: true })
-      } catch {}
+      } catch (error) {
+        this.extractionErrors.push(`copyAndExtract: failed to remove temp db ${tempPath}: ${(error as Error).message}`)
+      }
     }
   }
 
-  private readTokenFromDb(dbPath: string, originalPath: string): ExtractedToken | null {
+  private readTokenFromDb(dbPath: string, originalPath: string): ExtractedBrowserTokenCandidate | null {
     try {
       const placeholders = NOTION_HOST_KEYS.map(() => '?').join(', ')
       const sql = `
@@ -314,9 +339,12 @@ export class BrowserTokenExtractor {
       const userIds = this.parseUserIds(cookieMap['notion_users'])
 
       return {
-        token_v2: token,
-        ...(userId ? { user_id: userId } : {}),
-        ...(userIds.length > 0 ? { user_ids: userIds } : {}),
+        extracted: {
+          token_v2: token,
+          ...(userId ? { user_id: userId } : {}),
+          ...(userIds.length > 0 ? { user_ids: userIds } : {}),
+        },
+        lastAccessUtc: Math.max(...rows.map((row) => row.last_access_utc ?? 0), 0),
       }
     } catch (error) {
       if (error instanceof Error && error.message.includes('better-sqlite3')) {
@@ -343,11 +371,38 @@ export class BrowserTokenExtractor {
           if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
             return parsed
           }
-        } catch {}
+        } catch {
+          return []
+        }
       }
     }
 
     return []
+  }
+
+  private readProfilesFromLocalState(browserBase: string): string[] {
+    const localStatePath = join(browserBase, 'Local State')
+    if (!existsSync(localStatePath)) return []
+
+    try {
+      const raw = JSON.parse(readFileSync(localStatePath, 'utf8')) as {
+        profile?: { info_cache?: Record<string, unknown> }
+      }
+
+      return Object.keys(raw.profile?.info_cache ?? {})
+    } catch (error) {
+      this.extractionErrors.push(`readProfilesFromLocalState: ${(error as Error).message}`)
+      return []
+    }
+  }
+
+  private isProfileDirectory(browserBase: string, entryName: string): boolean {
+    if (/^(Default|Profile \d+|Guest Profile|System Profile)$/i.test(entryName)) {
+      return true
+    }
+
+    const profilePath = join(browserBase, entryName)
+    return existsSync(join(profilePath, 'Network', 'Cookies')) || existsSync(join(profilePath, 'Cookies'))
   }
 
   isEncryptedValue(value: Buffer): boolean {
