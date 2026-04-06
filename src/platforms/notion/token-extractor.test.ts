@@ -510,11 +510,7 @@ describe('TokenExtractor', () => {
 
     expect(extracted).toEqual([
       { token_v2: 'v02%3Anewer-token', user_id: 'user-new' },
-      {
-        token_v2: 'v02%3Aolder-token',
-        user_id: 'user-old',
-        user_ids: ['user-missing'],
-      },
+      { token_v2: 'v02%3Aolder-token', user_id: 'user-old' },
     ])
   })
 

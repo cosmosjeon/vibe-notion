@@ -379,6 +379,8 @@ export class BrowserTokenExtractor {
       const olderTokenAnchor = olderTokenAnchorIndex === -1 ? null : tokenAnchors[olderTokenAnchorIndex]
       const newerCandidateIndex = newerTokenAnchor ? (candidateIndexByTokenIndex.get(newerTokenAnchor.index) ?? null) : null
       const olderCandidateIndex = olderTokenAnchor ? (candidateIndexByTokenIndex.get(olderTokenAnchor.index) ?? null) : null
+      const newerDistance = newerTokenAnchor ? Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
+      const olderDistance = olderTokenAnchor ? Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
 
       if (newerCandidateIndex === null && olderCandidateIndex === null) {
         return null
@@ -393,15 +395,12 @@ export class BrowserTokenExtractor {
       }
 
       if (newerCandidateIndex === null) {
-        return olderCandidateIndex
+        return olderDistance < newerDistance ? olderCandidateIndex : null
       }
 
       if (olderCandidateIndex === null) {
-        return newerCandidateIndex
+        return newerDistance < olderDistance ? newerCandidateIndex : null
       }
-
-      const newerDistance = Math.abs((newerTokenAnchor!.row.last_access_utc ?? 0) - rowLastAccessUtc)
-      const olderDistance = Math.abs((olderTokenAnchor!.row.last_access_utc ?? 0) - rowLastAccessUtc)
 
       return newerDistance <= olderDistance ? newerCandidateIndex : olderCandidateIndex
     }
