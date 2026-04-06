@@ -7,6 +7,11 @@ export interface NotionCredentials {
   token_v2: string
   user_id?: string
   user_ids?: string[]
+  accounts?: Array<{
+    token_v2: string
+    user_id?: string
+    user_ids?: string[]
+  }>
 }
 
 export interface CredentialConfig {

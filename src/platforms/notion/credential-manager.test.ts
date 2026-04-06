@@ -60,6 +60,28 @@ describe('CredentialManager', () => {
     expect(creds).toEqual({ token_v2: 'v02%3Atoken', user_id: 'user-777' })
   })
 
+  test('setCredentials preserves extracted accounts metadata', async () => {
+    await manager.setCredentials({
+      token_v2: 'v02%3Atoken',
+      user_id: 'user-777',
+      accounts: [
+        { token_v2: 'v02%3Atoken', user_id: 'user-777' },
+        { token_v2: 'v02%3Atoken-2', user_id: 'user-888' },
+      ],
+    })
+
+    const creds = await manager.getCredentials()
+
+    expect(creds).toEqual({
+      token_v2: 'v02%3Atoken',
+      user_id: 'user-777',
+      accounts: [
+        { token_v2: 'v02%3Atoken', user_id: 'user-777' },
+        { token_v2: 'v02%3Atoken-2', user_id: 'user-888' },
+      ],
+    })
+  })
+
   test('remove deletes credential file', async () => {
     const credentialsPath = join(configDir, 'credentials.json')
     await manager.setCredentials({ token_v2: 'v02%3Atoken' })

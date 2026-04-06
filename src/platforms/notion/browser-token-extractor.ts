@@ -170,8 +170,8 @@ export class BrowserTokenExtractor {
         console.error(`[debug] Browser cookie path: ${cookiePath}`)
       }
 
-      const extracted = this.copyAndExtract(cookiePath)
-      if (extracted) {
+      const extractedCandidates = this.copyAndExtract(cookiePath)
+      for (const extracted of extractedCandidates) {
         const existing = candidatesByToken.get(extracted.extracted.token_v2)
         if (!existing || extracted.lastAccessUtc > existing.lastAccessUtc) {
           candidatesByToken.set(extracted.extracted.token_v2, extracted)
@@ -254,14 +254,14 @@ export class BrowserTokenExtractor {
     return [...dirs]
   }
 
-  private copyAndExtract(dbPath: string): ExtractedBrowserTokenCandidate | null {
+  private copyAndExtract(dbPath: string): ExtractedBrowserTokenCandidate[] {
     const tempPath = join(tmpdir(), `notion-browser-cookies-${Date.now()}-${Math.random().toString(36).slice(2)}.db`)
 
     try {
       copyFileSync(dbPath, tempPath)
     } catch {
       this.extractionErrors.push(`copyAndExtract: failed to copy ${dbPath}`)
-      return null
+      return []
     }
 
     try {
@@ -275,7 +275,7 @@ export class BrowserTokenExtractor {
     }
   }
 
-  private readTokenFromDb(dbPath: string, originalPath: string): ExtractedBrowserTokenCandidate | null {
+  private readTokenFromDb(dbPath: string, originalPath: string): ExtractedBrowserTokenCandidate[] {
     try {
       const placeholders = NOTION_HOST_KEYS.map(() => '?').join(', ')
       const sql = `
@@ -307,52 +307,132 @@ export class BrowserTokenExtractor {
 
       rows.sort((a, b) => (b.last_access_utc ?? 0) - (a.last_access_utc ?? 0))
 
-      const cookieMap: Record<string, string> = {}
-      for (const row of rows) {
-        let value = ''
-
-        if (row.encrypted_value && row.encrypted_value.length > 0) {
-          const encBuf = Buffer.from(row.encrypted_value)
-          if (this.isEncryptedValue(encBuf)) {
-            const decrypted = this.decryptCookie(encBuf, originalPath)
-            if (decrypted) {
-              value = decrypted
-            }
-          } else {
-            value = encBuf.toString('utf8')
-          }
-        } else if (row.value) {
-          value = row.value
-        }
-
-        if (value && !cookieMap[row.name]) {
-          cookieMap[row.name] = value
-        }
-      }
-
-      const rawToken = cookieMap['token_v2']
-      if (!rawToken) return null
-
-      const token = extractValueFromDecrypted(rawToken)
-      const rawUserId = cookieMap['notion_user_id']
-      const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : undefined
-      const userIds = this.parseUserIds(cookieMap['notion_users'])
-
-      return {
-        extracted: {
-          token_v2: token,
-          ...(userId ? { user_id: userId } : {}),
-          ...(userIds.length > 0 ? { user_ids: userIds } : {}),
-        },
-        lastAccessUtc: Math.max(...rows.map((row) => row.last_access_utc ?? 0), 0),
-      }
+      return this.buildCandidatesFromRows(rows, originalPath)
     } catch (error) {
       if (error instanceof Error && error.message.includes('better-sqlite3')) {
         throw error
       }
       this.extractionErrors.push(`readTokenFromDb: ${(error as Error).message}`)
-      return null
+      return []
     }
+  }
+
+  private buildCandidatesFromRows(rows: CookieRow[], originalPath: string): ExtractedBrowserTokenCandidate[] {
+    const normalizedRows = rows
+    const candidates: Array<ExtractedBrowserTokenCandidate & { tokenIndex: number }> = []
+    const candidateIndexByTokenIndex = new Map<number, number>()
+
+    const resolveRowValue = (row: CookieRow | undefined): string | null => {
+      if (!row) return null
+
+      if (row.encrypted_value && row.encrypted_value.length > 0) {
+        const encryptedValue = Buffer.from(row.encrypted_value)
+        if (this.isEncryptedValue(encryptedValue)) {
+          return this.decryptCookie(encryptedValue, originalPath)
+        }
+
+        return encryptedValue.toString('utf8')
+      }
+
+      return row.value ?? null
+    }
+
+    normalizedRows.forEach((row, index) => {
+      if (row.name !== 'token_v2') {
+        return
+      }
+
+      const rawToken = resolveRowValue(row)
+      if (!rawToken) {
+        return
+      }
+
+      const candidateIndex = candidates.length
+      candidates.push({
+        extracted: {
+          token_v2: extractValueFromDecrypted(rawToken),
+        },
+        lastAccessUtc: row.last_access_utc ?? 0,
+        tokenIndex: index,
+      })
+      candidateIndexByTokenIndex.set(index, candidateIndex)
+    })
+
+    const tokenAnchors = normalizedRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.name === 'token_v2')
+
+    const chooseCandidateIndex = (rowIndex: number, rowLastAccessUtc: number): number | null => {
+      let newerTokenAnchorIndex = -1
+      for (let tokenAnchorIndex = 0; tokenAnchorIndex < tokenAnchors.length; tokenAnchorIndex++) {
+        if (tokenAnchors[tokenAnchorIndex].index < rowIndex) {
+          newerTokenAnchorIndex = tokenAnchorIndex
+        }
+      }
+      const olderTokenAnchorIndex = tokenAnchors.findIndex((tokenAnchor) => tokenAnchor.index > rowIndex)
+
+      if (newerTokenAnchorIndex === -1 && olderTokenAnchorIndex === -1) {
+        return null
+      }
+
+      const newerTokenAnchor = newerTokenAnchorIndex === -1 ? null : tokenAnchors[newerTokenAnchorIndex]
+      const olderTokenAnchor = olderTokenAnchorIndex === -1 ? null : tokenAnchors[olderTokenAnchorIndex]
+      const newerCandidateIndex = newerTokenAnchor ? (candidateIndexByTokenIndex.get(newerTokenAnchor.index) ?? null) : null
+      const olderCandidateIndex = olderTokenAnchor ? (candidateIndexByTokenIndex.get(olderTokenAnchor.index) ?? null) : null
+      const newerDistance = newerTokenAnchor ? Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
+      const olderDistance = olderTokenAnchor ? Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
+
+      if (newerCandidateIndex === null && olderCandidateIndex === null) {
+        return null
+      }
+
+      if (newerTokenAnchorIndex === -1) {
+        return olderCandidateIndex
+      }
+
+      if (olderTokenAnchorIndex === -1) {
+        return newerCandidateIndex
+      }
+
+      if (newerCandidateIndex === null) {
+        return olderDistance < newerDistance ? olderCandidateIndex : null
+      }
+
+      if (olderCandidateIndex === null) {
+        return newerDistance < olderDistance ? newerCandidateIndex : null
+      }
+
+      return newerDistance <= olderDistance ? newerCandidateIndex : olderCandidateIndex
+    }
+
+    normalizedRows.forEach((row, rowIndex) => {
+      if (row.name === 'token_v2') {
+        return
+      }
+
+      const candidateIndex = chooseCandidateIndex(rowIndex, row.last_access_utc ?? 0)
+      if (candidateIndex === null) {
+        return
+      }
+
+      const candidate = candidates[candidateIndex]
+      if (row.name === 'notion_user_id' && !candidate.extracted.user_id) {
+        const rawUserId = resolveRowValue(row)
+        const userId = rawUserId ? extractValueFromDecrypted(rawUserId) : undefined
+        if (userId) {
+          candidate.extracted.user_id = userId
+        }
+      }
+
+      if (row.name === 'notion_users' && !candidate.extracted.user_ids) {
+        const userIds = this.parseUserIds(resolveRowValue(row) ?? undefined)
+        if (userIds.length > 0) {
+          candidate.extracted.user_ids = userIds
+        }
+      }
+    })
+
+    return candidates.map(({ tokenIndex: _tokenIndex, ...candidate }) => candidate)
   }
 
   private parseUserIds(raw: string | undefined): string[] {

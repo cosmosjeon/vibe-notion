@@ -9,6 +9,7 @@ let _mockGetCredentials: (...args: unknown[]) => unknown = () => Promise.resolve
 let _mockAppExtract: (...args: unknown[]) => unknown = () => Promise.resolve(null)
 let _mockBrowserExtract: (...args: unknown[]) => unknown = () => Promise.resolve(null)
 let _mockSetCredentials: (...args: unknown[]) => unknown = () => Promise.resolve()
+let _mockValidateTokenV2: (token: string) => Promise<void> = () => Promise.resolve()
 let _capturedActiveUserId: string | undefined
 
 afterEach(() => {
@@ -17,6 +18,7 @@ afterEach(() => {
   _mockAppExtract = () => Promise.resolve(null)
   _mockBrowserExtract = () => Promise.resolve(null)
   _mockSetCredentials = () => Promise.resolve()
+  _mockValidateTokenV2 = () => Promise.resolve()
   _capturedActiveUserId = undefined
 })
 
@@ -27,12 +29,56 @@ function generateId(): string {
   return randomUUID()
 }
 
+function withStoredAccounts<T extends { token_v2: string; user_id?: string; user_ids?: string[] }>(
+  extracted: T,
+  accounts: T[],
+): T & { accounts?: T[] } {
+  if (accounts.length <= 1) {
+    return extracted
+  }
+
+  return {
+    ...extracted,
+    accounts,
+  }
+}
+
+function normalizeExtracted(result: unknown) {
+  const accounts = Array.isArray(result)
+    ? result
+    : result
+      ? [result]
+      : []
+
+  return accounts as Array<{ token_v2: string; user_id?: string; user_ids?: string[] }>
+}
+
+async function selectValidCredentials(result: unknown) {
+  const accounts = normalizeExtracted(result)
+  const validAccounts: Array<{ token_v2: string; user_id?: string; user_ids?: string[] }> = []
+
+  for (const account of accounts) {
+    try {
+      await _mockValidateTokenV2(account.token_v2)
+      validAccounts.push(account)
+    } catch {}
+  }
+
+  const extracted = validAccounts[0]
+
+  if (!extracted) {
+    return null
+  }
+
+  return withStoredAccounts(extracted, validAccounts)
+}
+
 async function getCredentialsOrExit() {
   const creds = await _mockGetCredentials()
   if (creds) return creds
 
   try {
-    const extracted = await _mockAppExtract()
+    const extracted = await selectValidCredentials(await _mockAppExtract())
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -50,7 +96,7 @@ async function getCredentialsOrExit() {
   }
 
   try {
-    const extracted = await _mockBrowserExtract()
+    const extracted = await selectValidCredentials(await _mockBrowserExtract())
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -74,7 +120,7 @@ async function getCredentialsOrThrow() {
   if (creds) return creds
 
   try {
-    const extracted = await _mockAppExtract()
+    const extracted = await selectValidCredentials(await _mockAppExtract())
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -86,7 +132,7 @@ async function getCredentialsOrThrow() {
   }
 
   try {
-    const extracted = await _mockBrowserExtract()
+    const extracted = await selectValidCredentials(await _mockBrowserExtract())
     if (extracted) {
       await _mockSetCredentials(extracted)
       return extracted
@@ -424,6 +470,51 @@ describe('getCredentialsOrExit', () => {
     expect(result).toEqual({ token_v2: 'browser-token' })
   })
 
+  test('stores all extracted app accounts while keeping the first one active', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.resolve([
+      { token_v2: 'app-token-1', user_id: 'user-1' },
+      { token_v2: 'app-token-2', user_id: 'user-2' },
+    ]))
+    _mockSetCredentials = mock(() => Promise.resolve())
+
+    const result = await getCredentialsOrExit()
+    expect(result).toEqual({
+      token_v2: 'app-token-1',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'app-token-1', user_id: 'user-1' },
+        { token_v2: 'app-token-2', user_id: 'user-2' },
+      ],
+    })
+    expect(_mockSetCredentials).toHaveBeenCalledWith({
+      token_v2: 'app-token-1',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'app-token-1', user_id: 'user-1' },
+        { token_v2: 'app-token-2', user_id: 'user-2' },
+      ],
+    })
+  })
+
+  test('skips stale app account and keeps later valid account active', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.resolve([
+      { token_v2: 'stale-app-token', user_id: 'user-stale' },
+      { token_v2: 'fresh-app-token', user_id: 'user-fresh' },
+    ]))
+    _mockValidateTokenV2 = mock(async (token: string) => {
+      if (token === 'stale-app-token') {
+        throw new Error('401')
+      }
+    })
+    _mockSetCredentials = mock(() => Promise.resolve())
+
+    const result = await getCredentialsOrExit()
+    expect(result).toEqual({ token_v2: 'fresh-app-token', user_id: 'user-fresh' })
+    expect(_mockSetCredentials).toHaveBeenCalledWith({ token_v2: 'fresh-app-token', user_id: 'user-fresh' })
+  })
+
   test('exits with extraction error message when desktop auto-extraction fails hard', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
     _mockAppExtract = mock(() => Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')))
@@ -497,6 +588,46 @@ describe('getCredentialsOrThrow', () => {
     _mockBrowserExtract = mock(() => Promise.resolve({ token_v2: 'browser-token' }))
 
     await expect(getCredentialsOrThrow()).resolves.toEqual({ token_v2: 'browser-token' })
+  })
+
+  test('returns all extracted browser accounts while keeping the first one active', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
+    _mockBrowserExtract = mock(() => Promise.resolve([
+      { token_v2: 'browser-token-1', user_id: 'user-1' },
+      { token_v2: 'browser-token-2', user_id: 'user-2' },
+    ]))
+    _mockSetCredentials = mock(() => Promise.resolve())
+
+    await expect(getCredentialsOrThrow()).resolves.toEqual({
+      token_v2: 'browser-token-1',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'browser-token-1', user_id: 'user-1' },
+        { token_v2: 'browser-token-2', user_id: 'user-2' },
+      ],
+    })
+  })
+
+  test('falls back to browser when app accounts are all stale but browser has a valid account', async () => {
+    _mockGetCredentials = mock(() => Promise.resolve(null))
+    _mockAppExtract = mock(() => Promise.resolve([
+      { token_v2: 'stale-app-token', user_id: 'user-stale' },
+    ]))
+    _mockBrowserExtract = mock(() => Promise.resolve([
+      { token_v2: 'fresh-browser-token', user_id: 'user-browser' },
+    ]))
+    _mockValidateTokenV2 = mock(async (token: string) => {
+      if (token === 'stale-app-token') {
+        throw new Error('401')
+      }
+    })
+    _mockSetCredentials = mock(() => Promise.resolve())
+
+    await expect(getCredentialsOrThrow()).resolves.toEqual({
+      token_v2: 'fresh-browser-token',
+      user_id: 'user-browser',
+    })
   })
 
   test('throws with extraction error message when desktop auto-extraction fails hard', async () => {
