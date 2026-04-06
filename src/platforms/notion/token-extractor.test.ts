@@ -453,6 +453,67 @@ describe('TokenExtractor', () => {
     ])
   })
 
+  test('extractAll keeps unreadable token rows as metadata boundaries', async () => {
+    const notionDir = mkdtempSync(join(tmpdir(), 'notion-unreadable-boundary-'))
+    tempDirs.push(notionDir)
+
+    const partitionDir = join(notionDir, 'Partitions', 'notion')
+    mkdirSync(partitionDir, { recursive: true })
+
+    createCookiesDb(join(partitionDir, 'Cookies'), [
+      {
+        name: 'token_v2',
+        value: 'v02%3Anewer-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 300,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-new',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 299,
+      },
+      {
+        name: 'token_v2',
+        value: '',
+        encrypted_value: Uint8Array.from([1, 2, 3, 4]),
+        host_key: '.notion.so',
+        last_access_utc: 250,
+      },
+      {
+        name: 'notion_users',
+        value: '["user-missing"]',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 249,
+      },
+      {
+        name: 'token_v2',
+        value: 'v02%3Aolder-token',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 200,
+      },
+      {
+        name: 'notion_user_id',
+        value: 'user-old',
+        encrypted_value: new Uint8Array(),
+        host_key: '.notion.so',
+        last_access_utc: 199,
+      },
+    ])
+
+    const extractor = new TokenExtractor('darwin', notionDir)
+    const extracted = await extractor.extractAll()
+
+    expect(extracted).toEqual([
+      { token_v2: 'v02%3Anewer-token', user_id: 'user-new' },
+      { token_v2: 'v02%3Aolder-token', user_id: 'user-old' },
+    ])
+  })
+
   test('extract uses fallback Cookies path when partition db does not exist', async () => {
     const notionDir = mkdtempSync(join(tmpdir(), 'notion-fallback-'))
     tempDirs.push(notionDir)

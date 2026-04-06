@@ -320,6 +320,7 @@ export class BrowserTokenExtractor {
   private buildCandidatesFromRows(rows: CookieRow[], originalPath: string): ExtractedBrowserTokenCandidate[] {
     const normalizedRows = rows
     const candidates: Array<ExtractedBrowserTokenCandidate & { tokenIndex: number }> = []
+    const candidateIndexByTokenIndex = new Map<number, number>()
 
     const resolveRowValue = (row: CookieRow | undefined): string | null => {
       if (!row) return null
@@ -346,6 +347,7 @@ export class BrowserTokenExtractor {
         return
       }
 
+      const candidateIndex = candidates.length
       candidates.push({
         extracted: {
           token_v2: extractValueFromDecrypted(rawToken),
@@ -353,33 +355,43 @@ export class BrowserTokenExtractor {
         lastAccessUtc: row.last_access_utc ?? 0,
         tokenIndex: index,
       })
+      candidateIndexByTokenIndex.set(index, candidateIndex)
     })
 
+    const tokenAnchors = normalizedRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.name === 'token_v2')
+
     const chooseCandidateIndex = (rowIndex: number, rowLastAccessUtc: number): number | null => {
-      let newerCandidateIndex = -1
-      for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
-        if (candidates[candidateIndex].tokenIndex < rowIndex) {
-          newerCandidateIndex = candidateIndex
+      let newerTokenAnchorIndex = -1
+      for (let tokenAnchorIndex = 0; tokenAnchorIndex < tokenAnchors.length; tokenAnchorIndex++) {
+        if (tokenAnchors[tokenAnchorIndex].index < rowIndex) {
+          newerTokenAnchorIndex = tokenAnchorIndex
         }
       }
-      const olderCandidateIndex = candidates.findIndex((candidate) => candidate.tokenIndex > rowIndex)
+      const olderTokenAnchorIndex = tokenAnchors.findIndex((tokenAnchor) => tokenAnchor.index > rowIndex)
 
-      if (newerCandidateIndex === -1 && olderCandidateIndex === -1) {
+      if (newerTokenAnchorIndex === -1 && olderTokenAnchorIndex === -1) {
         return null
       }
 
-      if (newerCandidateIndex === -1) {
-        return olderCandidateIndex
+      if (newerTokenAnchorIndex === -1) {
+        const olderTokenIndex = tokenAnchors[olderTokenAnchorIndex]?.index
+        return olderTokenIndex === undefined ? null : (candidateIndexByTokenIndex.get(olderTokenIndex) ?? null)
       }
 
-      if (olderCandidateIndex === -1) {
-        return newerCandidateIndex
+      if (olderTokenAnchorIndex === -1) {
+        const newerTokenIndex = tokenAnchors[newerTokenAnchorIndex]?.index
+        return newerTokenIndex === undefined ? null : (candidateIndexByTokenIndex.get(newerTokenIndex) ?? null)
       }
 
-      const newerDistance = Math.abs(candidates[newerCandidateIndex].lastAccessUtc - rowLastAccessUtc)
-      const olderDistance = Math.abs(candidates[olderCandidateIndex].lastAccessUtc - rowLastAccessUtc)
+      const newerTokenAnchor = tokenAnchors[newerTokenAnchorIndex]
+      const olderTokenAnchor = tokenAnchors[olderTokenAnchorIndex]
+      const newerDistance = Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
+      const olderDistance = Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
 
-      return newerDistance <= olderDistance ? newerCandidateIndex : olderCandidateIndex
+      const chosenTokenIndex = newerDistance <= olderDistance ? newerTokenAnchor.index : olderTokenAnchor.index
+      return candidateIndexByTokenIndex.get(chosenTokenIndex) ?? null
     }
 
     normalizedRows.forEach((row, rowIndex) => {
