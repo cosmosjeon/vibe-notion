@@ -375,23 +375,35 @@ export class BrowserTokenExtractor {
         return null
       }
 
+      const newerTokenAnchor = newerTokenAnchorIndex === -1 ? null : tokenAnchors[newerTokenAnchorIndex]
+      const olderTokenAnchor = olderTokenAnchorIndex === -1 ? null : tokenAnchors[olderTokenAnchorIndex]
+      const newerCandidateIndex = newerTokenAnchor ? (candidateIndexByTokenIndex.get(newerTokenAnchor.index) ?? null) : null
+      const olderCandidateIndex = olderTokenAnchor ? (candidateIndexByTokenIndex.get(olderTokenAnchor.index) ?? null) : null
+
+      if (newerCandidateIndex === null && olderCandidateIndex === null) {
+        return null
+      }
+
       if (newerTokenAnchorIndex === -1) {
-        const olderTokenIndex = tokenAnchors[olderTokenAnchorIndex]?.index
-        return olderTokenIndex === undefined ? null : (candidateIndexByTokenIndex.get(olderTokenIndex) ?? null)
+        return olderCandidateIndex
       }
 
       if (olderTokenAnchorIndex === -1) {
-        const newerTokenIndex = tokenAnchors[newerTokenAnchorIndex]?.index
-        return newerTokenIndex === undefined ? null : (candidateIndexByTokenIndex.get(newerTokenIndex) ?? null)
+        return newerCandidateIndex
       }
 
-      const newerTokenAnchor = tokenAnchors[newerTokenAnchorIndex]
-      const olderTokenAnchor = tokenAnchors[olderTokenAnchorIndex]
-      const newerDistance = Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
-      const olderDistance = Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
+      if (newerCandidateIndex === null) {
+        return olderCandidateIndex
+      }
 
-      const chosenTokenIndex = newerDistance <= olderDistance ? newerTokenAnchor.index : olderTokenAnchor.index
-      return candidateIndexByTokenIndex.get(chosenTokenIndex) ?? null
+      if (olderCandidateIndex === null) {
+        return newerCandidateIndex
+      }
+
+      const newerDistance = Math.abs((newerTokenAnchor!.row.last_access_utc ?? 0) - rowLastAccessUtc)
+      const olderDistance = Math.abs((olderTokenAnchor!.row.last_access_utc ?? 0) - rowLastAccessUtc)
+
+      return newerDistance <= olderDistance ? newerCandidateIndex : olderCandidateIndex
     }
 
     normalizedRows.forEach((row, rowIndex) => {
