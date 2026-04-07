@@ -261,6 +261,140 @@ describe('WorkspaceCommand', () => {
     expect(guest.id).toBe('space-2')
   })
 
+  test('workspace list merges workspaces from stored accounts', async () => {
+    const mockInternalRequest = mock(async (tokenV2: string, endpoint: string) => {
+      if (endpoint !== 'getSpaces') return undefined
+
+      if (tokenV2 === 'primary-token') {
+        return {
+          'user-1': {
+            space: {
+              'space-1': {
+                value: { value: { id: 'space-1', name: 'indent', plan_type: 'team' }, role: 'editor' },
+              },
+            },
+          },
+        }
+      }
+
+      if (tokenV2 === 'secondary-token') {
+        return {
+          'user-2': {
+            space: {
+              'space-2': {
+                value: { value: { id: 'space-2', name: 'Suyeol', plan_type: 'personal' }, role: 'editor' },
+              },
+            },
+          },
+        }
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'primary-token',
+      accounts: [
+        { token_v2: 'primary-token' },
+        { token_v2: 'secondary-token' },
+      ],
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['list'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.length).toBe(2)
+    expect(result[0].name).toBe('indent')
+    expect(result[1].name).toBe('Suyeol')
+  })
+
+  test('workspace list still returns other accounts when one stored token fails', async () => {
+    const mockInternalRequest = mock(async (tokenV2: string, endpoint: string) => {
+      if (endpoint !== 'getSpaces') return undefined
+
+      if (tokenV2 === 'primary-token') {
+        throw new Error('primary failed')
+      }
+
+      return {
+        'user-2': {
+          space: {
+            'space-2': {
+              value: { value: { id: 'space-2', name: 'Suyeol' }, role: 'editor' },
+            },
+          },
+        },
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'primary-token',
+      accounts: [
+        { token_v2: 'secondary-token' },
+      ],
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['list'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.length).toBe(1)
+    expect(result[0].name).toBe('Suyeol')
+  })
+
   test('workspace list handles errors', async () => {
     const mockInternalRequest = mock(async () => {
       throw new Error('API error')

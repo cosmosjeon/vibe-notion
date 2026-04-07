@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 
 import { internalRequest } from '@/platforms/notion/client'
+import type { NotionCredentials } from '@/platforms/notion/credential-manager'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatOutput } from '@/shared/utils/output'
 
@@ -58,39 +59,74 @@ function extractSpaceViewPointers(entry: GetSpacesUserEntry, userId: string): Sp
   return (inner?.space_view_pointers as SpaceViewPointer[]) ?? []
 }
 
+function getAccountTokens(creds: NotionCredentials): string[] {
+  const tokens = [creds.token_v2]
+
+  for (const account of creds.accounts ?? []) {
+    if (tokens.includes(account.token_v2)) continue
+    tokens.push(account.token_v2)
+  }
+
+  return tokens
+}
+
+async function getSpacesResponses(creds: NotionCredentials): Promise<GetSpacesResponse[]> {
+  const responses: GetSpacesResponse[] = []
+  const errors: string[] = []
+
+  for (const token of getAccountTokens(creds)) {
+    try {
+      const response = (await internalRequest(token, 'getSpaces', {})) as GetSpacesResponse
+      responses.push(response)
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  if (responses.length === 0 && errors.length > 0) {
+    throw new Error(errors[0])
+  }
+
+  return responses
+}
+
 async function listAction(options: CommandOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
-    const response = (await internalRequest(creds.token_v2, 'getSpaces', {})) as GetSpacesResponse
+    const responses = await getSpacesResponses(creds)
 
     const seen = new Set<string>()
     const workspaces: WorkspaceEntry[] = []
 
-    for (const entry of Object.values(response)) {
-      for (const record of Object.values(entry.space ?? {})) {
-        const space = extractSpaceValue(record)
-        if (!space?.id) continue
-        if (seen.has(space.id)) continue
-        seen.add(space.id)
-        workspaces.push({
-          id: space.id,
-          name: space.name,
-          icon: space.icon,
-          plan_type: space.plan_type,
-          role: 'member',
-        })
+    for (const response of responses) {
+      for (const entry of Object.values(response)) {
+        for (const record of Object.values(entry.space ?? {})) {
+          const space = extractSpaceValue(record)
+          if (!space?.id) continue
+          if (seen.has(space.id)) continue
+          seen.add(space.id)
+          workspaces.push({
+            id: space.id,
+            name: space.name,
+            icon: space.icon,
+            plan_type: space.plan_type,
+            role: 'member',
+          })
+        }
       }
     }
 
-    for (const [userId, entry] of Object.entries(response)) {
-      const pointers = extractSpaceViewPointers(entry, userId)
-      for (const pointer of pointers) {
-        if (seen.has(pointer.spaceId)) continue
-        seen.add(pointer.spaceId)
-        workspaces.push({
-          id: pointer.spaceId,
-          role: 'guest',
-        })
+    for (const response of responses) {
+      for (const [userId, entry] of Object.entries(response)) {
+        const pointers = extractSpaceViewPointers(entry, userId)
+        for (const pointer of pointers) {
+          if (seen.has(pointer.spaceId)) continue
+          seen.add(pointer.spaceId)
+          workspaces.push({
+            id: pointer.spaceId,
+            role: 'guest',
+          })
+        }
       }
     }
 
