@@ -1,12 +1,16 @@
+<div align="center">
+
 # Vibe Notion
 
-[![npm version](https://img.shields.io/npm/v/vibe-notion)](https://www.npmjs.com/package/vibe-notion) [![SkillPad - vibe-notion](https://img.shields.io/badge/SkillPad-vibe--notion-1a1a1a)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notion) [![SkillPad - vibe-notionbot](https://img.shields.io/badge/SkillPad-vibe--notionbot-1a1a1a)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notionbot)
+[![npm](https://img.shields.io/npm/v/vibe-notion?color=000000)](https://www.npmjs.com/package/vibe-notion) [![SkillPad - vibe-notion](https://img.shields.io/badge/SkillPad-vibe--notion-1a1a1a)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notion) [![SkillPad - vibe-notionbot](https://img.shields.io/badge/SkillPad-vibe--notionbot-1a1a1a)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notionbot)
+
+**Your agent edits Notion as you — not as a bot**
+
+</div>
 
 ![demo](./docs/public/vibe-notion-demo.gif)
 
-**Give your AI agent the power to read and write Notion pages, databases, and more.**
-
-A full-coverage, agent-friendly CLI for the Notion API. Ships two CLIs — `vibe-notion` for the unofficial private API (act as yourself) and `vibe-notionbot` for the official Integration API (act as a bot).
+For Notion, automation is easy. Acting as *you* isn't. `vibe-notion` reads the session your Notion desktop app already holds, so your agent edits, comments, and searches as your logged-in account — not as an integration bot. If you do want a bot identity (server, CI/CD), `vibe-notionbot` ships alongside it and speaks the official Integration API.
 
 ## Table of Contents
 
@@ -31,16 +35,27 @@ A full-coverage, agent-friendly CLI for the Notion API. Ships two CLIs — `vibe
 
 ## Why Vibe Notion?
 
-Notion's official API only supports Integration (bot) tokens — your agent can't do things **on behalf of you**. Vibe Notion solves this by extracting your `token_v2` from the Notion desktop app, so your agent operates as you, with your full permissions.
+**You shouldn't need a bot to edit your own notes.**
 
-Need official API access instead? `vibe-notionbot` is included and fully supports Integration tokens via `NOTION_TOKEN`.
+The Notion MCP and the official Integration API are fine for automation. They share one thing by design: the agent acts as an **integration bot**, not as you.
 
-- **Act as you** — `vibe-notion` extracts `token_v2` from the Notion desktop app to operate with your own permissions
-- **Bot support too** — `vibe-notionbot` supports official Integration tokens via `NOTION_TOKEN`
-- **Full API coverage** — Pages, databases, blocks, users, search, comments, and workspaces
-- **Agent friendly** — JSON output by default, perfect for LLM tool use
+Concretely, that means:
+
+- **Bot identity on writes.** Pages, blocks, and comments created through the official API are attributed to the integration, with its own name and avatar. The `last_edited_by` and `created_by` fields return a bot user, not you. ([Notion docs](https://developers.notion.com/reference/authentication))
+- **Access is integration-scoped.** The integration only sees pages that have been explicitly shared with it via "Add connections." Your private drafts and pages you haven't connected stay invisible. ([Notion docs](https://developers.notion.com/docs/authorization))
+- **Setup needs a workspace owner.** Creating an internal integration requires workspace owner privileges — regular members can't.
+- **No user impersonation.** The API has no "act on behalf of" mode. Integration-scoped is the only mode.
+
+That's the right fit for a shared automation or a CI bot. It's the wrong fit when the agent is *yours* and the work is *yours* — when a comment should show your face, a page edit should show your name, and your agent should be able to read the private doc you never "connected" anything to.
+
+`vibe-notion` reads the `token_v2` your Notion desktop app is already using, so your agent inherits your session directly.
+
+- **Act as you** — `vibe-notion` extracts `token_v2` from the Notion desktop app. Edits, comments, and pages are attributed to your account
+- **See what you see** — Anything your logged-in session can open is accessible. No per-page "Add connections" step
+- **Bot mode included** — `vibe-notionbot` uses official Integration tokens (`NOTION_TOKEN`) when a bot identity is what you actually want
+- **Full API coverage** — Pages, databases, blocks, users, search, comments, workspaces
 - **Agent memory** — Remembers workspace IDs, page names, and preferences across sessions
-- **Token efficient** — CLI, not MCP. Load only what you need. ([Why not MCP?](#philosophy))
+- **CLI, not MCP** — One command per action, loaded through a skill. Smaller tool surface per prompt. ([More](#philosophy))
 
 ## Installation
 
@@ -48,23 +63,20 @@ Need official API access instead? `vibe-notionbot` is included and fully support
 npm install -g vibe-notion
 ```
 
-Or use your favorite package manager.
-
-This installs both the `vibe-notion` and `vibe-notionbot` CLI tools.
+Or use your favorite package manager. This installs both `vibe-notion` and `vibe-notionbot`.
 
 ## Agent Skills
 
-Vibe Notion includes [Agent Skills](https://agentskills.io/) that teach your AI agent how to use the CLI effectively. Two skills are available:
+Vibe Notion ships with [Agent Skills](https://agentskills.io/) that teach your AI agent how to use each CLI. Install only what you need:
 
-- **`vibe-notion`** — For the unofficial private API (`token_v2`)
-- **`vibe-notionbot`** — For the official Integration API (`NOTION_TOKEN`)
+- **`vibe-notion`** — Act as you (private API, `token_v2`)
+- **`vibe-notionbot`** — Act as a bot (official Integration API, `NOTION_TOKEN`)
 
 ### SkillPad
 
 SkillPad is a GUI app for Agent Skills. See [skillpad.dev](https://skillpad.dev/) for more details.
 
 [![Available on SkillPad](https://badge.skillpad.dev/vibe-notion/dark.svg)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notion) [![Available on SkillPad](https://badge.skillpad.dev/vibe-notionbot/dark.svg)](https://skillpad.dev/install/devxoul/vibe-notion/vibe-notionbot)
-
 
 ### Skills CLI
 
@@ -95,20 +107,22 @@ Add to your `opencode.jsonc`:
 
 ## Quick Start
 
-### `vibe-notion` (Private API — act as yourself)
+### `vibe-notion` — act as yourself
 
 ```bash
-# 1. List your workspaces
+# 1. List your workspaces (token auto-extracts from the desktop app on first run)
 vibe-notion workspace list --pretty
 
-# 2. Search for something
+# 2. Search across everything your session can see
 vibe-notion search "Roadmap" --workspace-id <workspace-id> --pretty
 
-# 3. Get page details
+# 3. Read a page
 vibe-notion page get <page-id> --workspace-id <workspace-id> --pretty
 ```
 
-### `vibe-notionbot` (Official API — act as a bot)
+No OAuth flow. No integration to create. No pages to connect.
+
+### `vibe-notionbot` — act as a bot
 
 ```bash
 # 1. Set your Notion Integration Token
@@ -117,20 +131,20 @@ export NOTION_TOKEN=secret_xxx
 # 2. Check auth status
 vibe-notionbot auth status --pretty
 
-# 3. Search for something
+# 3. Search with filters
 vibe-notionbot search "Roadmap" --filter page --pretty
 
-# 4. Get page details
+# 4. Read a page
 vibe-notionbot page get <page-id> --pretty
 ```
 
 ## Command Overview
 
-### `vibe-notion` (Private API)
+### `vibe-notion` (Private API — acts as you)
 
 | Command | Description |
 |---------|-------------|
-| `auth` | Extract token, check status, logout |
+| `auth` | Extract token from desktop app, check status, logout |
 | `workspace` | List accessible workspaces |
 | `page` | Get, list, create, update, archive pages |
 | `database` | Get schema, query, create, update, delete properties, add/update rows, list, manage views |
@@ -141,7 +155,7 @@ vibe-notionbot page get <page-id> --pretty
 
 > All commands that operate within a workspace require `--workspace-id`. Use `vibe-notion workspace list` to find yours.
 
-### `vibe-notionbot` (Official API)
+### `vibe-notionbot` (Official API — acts as a bot)
 
 | Command | Description |
 |---------|-------------|
@@ -156,6 +170,8 @@ vibe-notionbot page get <page-id> --pretty
 > Requires `NOTION_TOKEN` environment variable with an Integration token from the [Notion Developer Portal](https://www.notion.so/my-integrations).
 
 ## Use Cases
+
+Each of these runs under your account: the page history shows your name, and comments post under your avatar.
 
 ### Research & Discovery
 
@@ -173,7 +189,7 @@ Pull context from Notion before you start working — no tab-switching, no skimm
 
 ### Project Tracking
 
-Let your agent check, update, and clean up project boards without leaving your editor.
+Check, update, and clean up project boards without leaving your editor.
 
 > "Query the Sprint 24 database and tell me which tasks are still in progress or blocked."
 
@@ -187,7 +203,7 @@ Let your agent check, update, and clean up project boards without leaving your e
 
 ### Creating & Writing
 
-Create pages, file reports, and post updates — all from a prompt.
+Create pages, file reports, and post comments — all from a prompt.
 
 > "Create a meeting notes page under the Team Meetings database with today's date, attendees, and an empty agenda section."
 
@@ -201,7 +217,7 @@ Create pages, file reports, and post updates — all from a prompt.
 
 ### Automation & Pipelines
 
-Wire Notion into your CI, scripts, or agent workflows as a read/write layer.
+Wire Notion into your CI, scripts, or agent workflows. Use `vibe-notionbot` when a bot identity is the right fit (server-side jobs, shared automation, auditable CI), or `vibe-notion` when the automation should run under your account.
 
 > "A new user just signed up. Add a row to the Leads database with their name, email, and source."
 
@@ -215,10 +231,19 @@ Wire Notion into your CI, scripts, or agent workflows as a read/write layer.
 
 ### ...and More
 
-These are just starting points. Your agent has full read/write access to Notion — the real limit is your creativity. If you build something amazing with Vibe Notion, [let me know](https://x.com/devxoul)!
+These are starting points. If you build something cool with Vibe Notion, [let me know](https://x.com/devxoul)!
+
 ## Philosophy
 
-**Why not MCP?** MCP servers expose all tools at once, bloating context and confusing agents. **[Agent Skills](https://agentskills.io/) + agent-friendly CLI** offer a better approach—load what you need, when you need it. Fewer tokens, cleaner context, better output.
+### Why CLI, not MCP?
+
+MCP is great for broad tool interoperability across many services. For a single-surface tool like Notion, a CLI loaded through an Agent Skill is lighter: the agent pulls in one skill file and one shell command per action, rather than registering and keeping a server process around. It's a fit question, not a verdict on MCP.
+
+### Why not just the official API?
+
+Because the official API is, by design, the *integration's* identity — not yours. That's correct for a shared bot, a CI job, or any automation where "Edited by Releases Bot" is the right answer. It's not correct when you want the agent to act as you: your account, your visibility, your attribution on edits and comments.
+
+`vibe-notion` covers the personal-agent case by piggybacking on the session your desktop app already holds. `vibe-notionbot` covers the bot case through the official API. Pick whichever identity actually fits the job.
 
 Inspired by [agent-browser](https://github.com/vercel-labs/agent-browser) from Vercel Labs and [agent-messenger](https://github.com/devxoul/agent-messenger).
 
