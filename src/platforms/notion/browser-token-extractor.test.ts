@@ -90,7 +90,12 @@ describe('BrowserTokenExtractor', () => {
 
   test('getBrowserBasePath returns null when browser has empty path for platform', () => {
     const extractor = new BrowserTokenExtractor('linux')
-    const result = extractor.getBrowserBasePath({ name: 'Arc', darwin: 'Arc/User Data', linux: '', win32: 'Arc/User Data' })
+    const result = extractor.getBrowserBasePath({
+      name: 'Arc',
+      darwin: 'Arc/User Data',
+      linux: '',
+      win32: 'Arc/User Data',
+    })
     expect(result).toBeNull()
   })
 
@@ -615,7 +620,10 @@ describe('BrowserTokenExtractor', () => {
       override getBrowserCookiePaths(): string[] {
         const paths: string[] = []
         const entries = readdirSync(browserBase, { withFileTypes: true })
-        const profiles = ['Default', ...entries.filter(e => e.isDirectory() && /^Profile \d+$/i.test(e.name)).map(e => e.name)]
+        const profiles = [
+          'Default',
+          ...entries.filter((e) => e.isDirectory() && /^Profile \d+$/i.test(e.name)).map((e) => e.name),
+        ]
         for (const profile of profiles) {
           paths.push(join(browserBase, profile, 'Network', 'Cookies'))
           paths.push(join(browserBase, profile, 'Cookies'))
@@ -670,10 +678,7 @@ describe('BrowserTokenExtractor', () => {
     const extractor = new TestExtractor('darwin')
     const result = await extractor.extractAll()
 
-    expect(result).toEqual([
-      { token_v2: 'v02%3Anewer-token' },
-      { token_v2: 'v02%3Aolder-token' },
-    ])
+    expect(result).toEqual([{ token_v2: 'v02%3Anewer-token' }, { token_v2: 'v02%3Aolder-token' }])
   })
 
   test('extractAll returns multiple browser accounts from a single cookie database', async () => {

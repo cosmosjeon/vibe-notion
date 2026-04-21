@@ -221,10 +221,7 @@ export class BrowserTokenExtractor {
       case 'win32':
         relative = browser.win32
         if (!relative) return null
-        return join(
-          process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'),
-          relative,
-        )
+        return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), relative)
       default:
         return null
     }
@@ -377,10 +374,18 @@ export class BrowserTokenExtractor {
 
       const newerTokenAnchor = newerTokenAnchorIndex === -1 ? null : tokenAnchors[newerTokenAnchorIndex]
       const olderTokenAnchor = olderTokenAnchorIndex === -1 ? null : tokenAnchors[olderTokenAnchorIndex]
-      const newerCandidateIndex = newerTokenAnchor ? (candidateIndexByTokenIndex.get(newerTokenAnchor.index) ?? null) : null
-      const olderCandidateIndex = olderTokenAnchor ? (candidateIndexByTokenIndex.get(olderTokenAnchor.index) ?? null) : null
-      const newerDistance = newerTokenAnchor ? Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
-      const olderDistance = olderTokenAnchor ? Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc) : Number.POSITIVE_INFINITY
+      const newerCandidateIndex = newerTokenAnchor
+        ? (candidateIndexByTokenIndex.get(newerTokenAnchor.index) ?? null)
+        : null
+      const olderCandidateIndex = olderTokenAnchor
+        ? (candidateIndexByTokenIndex.get(olderTokenAnchor.index) ?? null)
+        : null
+      const newerDistance = newerTokenAnchor
+        ? Math.abs((newerTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
+        : Number.POSITIVE_INFINITY
+      const olderDistance = olderTokenAnchor
+        ? Math.abs((olderTokenAnchor.row.last_access_utc ?? 0) - rowLastAccessUtc)
+        : Number.POSITIVE_INFINITY
 
       if (newerCandidateIndex === null && olderCandidateIndex === null) {
         return null
@@ -529,10 +534,9 @@ export class BrowserTokenExtractor {
     try {
       const safeService = service.replace(/"/g, '\\"')
       const safeAccount = account.replace(/"/g, '\\"')
-      return execSync(
-        `security find-generic-password -s "${safeService}" -a "${safeAccount}" -w 2>/dev/null`,
-        { encoding: 'utf8' },
-      ).trim()
+      return execSync(`security find-generic-password -s "${safeService}" -a "${safeAccount}" -w 2>/dev/null`, {
+        encoding: 'utf8',
+      }).trim()
     } catch {
       return null
     }
@@ -558,10 +562,10 @@ export class BrowserTokenExtractor {
 
   lookupLinuxKeyringPassword(appName: string): string | null {
     try {
-      return execSync(
-        `secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application '${appName}'`,
-        { timeout: 5000, encoding: 'utf8' },
-      ).trim()
+      return execSync(`secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application '${appName}'`, {
+        timeout: 5000,
+        encoding: 'utf8',
+      }).trim()
     } catch {
       return null
     }

@@ -44,11 +44,7 @@ function withStoredAccounts<T extends { token_v2: string; user_id?: string; user
 }
 
 function normalizeExtracted(result: unknown) {
-  const accounts = Array.isArray(result)
-    ? result
-    : result
-      ? [result]
-      : []
+  const accounts = Array.isArray(result) ? result : result ? [result] : []
 
   return accounts as Array<{ token_v2: string; user_id?: string; user_ids?: string[] }>
 }
@@ -472,10 +468,12 @@ describe('getCredentialsOrExit', () => {
 
   test('stores all extracted app accounts while keeping the first one active', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockAppExtract = mock(() => Promise.resolve([
-      { token_v2: 'app-token-1', user_id: 'user-1' },
-      { token_v2: 'app-token-2', user_id: 'user-2' },
-    ]))
+    _mockAppExtract = mock(() =>
+      Promise.resolve([
+        { token_v2: 'app-token-1', user_id: 'user-1' },
+        { token_v2: 'app-token-2', user_id: 'user-2' },
+      ]),
+    )
     _mockSetCredentials = mock(() => Promise.resolve())
 
     const result = await getCredentialsOrExit()
@@ -499,10 +497,12 @@ describe('getCredentialsOrExit', () => {
 
   test('skips stale app account and keeps later valid account active', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockAppExtract = mock(() => Promise.resolve([
-      { token_v2: 'stale-app-token', user_id: 'user-stale' },
-      { token_v2: 'fresh-app-token', user_id: 'user-fresh' },
-    ]))
+    _mockAppExtract = mock(() =>
+      Promise.resolve([
+        { token_v2: 'stale-app-token', user_id: 'user-stale' },
+        { token_v2: 'fresh-app-token', user_id: 'user-fresh' },
+      ]),
+    )
     _mockValidateTokenV2 = mock(async (token: string) => {
       if (token === 'stale-app-token') {
         throw new Error('401')
@@ -517,7 +517,9 @@ describe('getCredentialsOrExit', () => {
 
   test('exits with extraction error message when desktop auto-extraction fails hard', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockAppExtract = mock(() => Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')))
+    _mockAppExtract = mock(() =>
+      Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')),
+    )
 
     const mockExit = mock(() => {
       throw new Error('process.exit called')
@@ -593,10 +595,12 @@ describe('getCredentialsOrThrow', () => {
   test('returns all extracted browser accounts while keeping the first one active', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
     _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
-    _mockBrowserExtract = mock(() => Promise.resolve([
-      { token_v2: 'browser-token-1', user_id: 'user-1' },
-      { token_v2: 'browser-token-2', user_id: 'user-2' },
-    ]))
+    _mockBrowserExtract = mock(() =>
+      Promise.resolve([
+        { token_v2: 'browser-token-1', user_id: 'user-1' },
+        { token_v2: 'browser-token-2', user_id: 'user-2' },
+      ]),
+    )
     _mockSetCredentials = mock(() => Promise.resolve())
 
     await expect(getCredentialsOrThrow()).resolves.toEqual({
@@ -611,12 +615,8 @@ describe('getCredentialsOrThrow', () => {
 
   test('falls back to browser when app accounts are all stale but browser has a valid account', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockAppExtract = mock(() => Promise.resolve([
-      { token_v2: 'stale-app-token', user_id: 'user-stale' },
-    ]))
-    _mockBrowserExtract = mock(() => Promise.resolve([
-      { token_v2: 'fresh-browser-token', user_id: 'user-browser' },
-    ]))
+    _mockAppExtract = mock(() => Promise.resolve([{ token_v2: 'stale-app-token', user_id: 'user-stale' }]))
+    _mockBrowserExtract = mock(() => Promise.resolve([{ token_v2: 'fresh-browser-token', user_id: 'user-browser' }]))
     _mockValidateTokenV2 = mock(async (token: string) => {
       if (token === 'stale-app-token') {
         throw new Error('401')
@@ -632,7 +632,9 @@ describe('getCredentialsOrThrow', () => {
 
   test('throws with extraction error message when desktop auto-extraction fails hard', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
-    _mockAppExtract = mock(() => Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')))
+    _mockAppExtract = mock(() =>
+      Promise.reject(new Error('Failed to read Notion cookies. Quit the Notion app completely and try again.')),
+    )
 
     await expect(getCredentialsOrThrow()).rejects.toThrow(
       'Auto-extraction failed: Failed to read Notion cookies. Quit the Notion app completely and try again.',
@@ -642,7 +644,9 @@ describe('getCredentialsOrThrow', () => {
   test('throws with browser extraction error after desktop fallback', async () => {
     _mockGetCredentials = mock(() => Promise.resolve(null))
     _mockAppExtract = mock(() => Promise.reject(new Error('Notion directory not found')))
-    _mockBrowserExtract = mock(() => Promise.reject(new Error('better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3')))
+    _mockBrowserExtract = mock(() =>
+      Promise.reject(new Error('better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3')),
+    )
 
     await expect(getCredentialsOrThrow()).rejects.toThrow(
       'Auto-extraction failed: better-sqlite3 is required for Node.js. Install it with: npm install better-sqlite3',

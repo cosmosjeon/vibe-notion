@@ -292,10 +292,7 @@ describe('WorkspaceCommand', () => {
 
     const mockGetCredentials = mock(async () => ({
       token_v2: 'primary-token',
-      accounts: [
-        { token_v2: 'primary-token' },
-        { token_v2: 'secondary-token' },
-      ],
+      accounts: [{ token_v2: 'primary-token' }, { token_v2: 'secondary-token' }],
     }))
 
     mock.module('../client', () => ({
@@ -355,9 +352,7 @@ describe('WorkspaceCommand', () => {
 
     const mockGetCredentials = mock(async () => ({
       token_v2: 'primary-token',
-      accounts: [
-        { token_v2: 'secondary-token' },
-      ],
+      accounts: [{ token_v2: 'secondary-token' }],
     }))
 
     mock.module('../client', () => ({

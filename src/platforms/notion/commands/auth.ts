@@ -31,7 +31,9 @@ function shouldFallbackToBrowser(error: unknown): boolean {
   return error.message.includes('Notion directory not found')
 }
 
-async function collectCandidatesFromApp(options: CommandOptions): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
+async function collectCandidatesFromApp(
+  options: CommandOptions,
+): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
   const extractor = new TokenExtractor(undefined, undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -62,7 +64,9 @@ async function collectCandidatesFromApp(options: CommandOptions): Promise<{ cand
   return { candidates, errors: extractor.getErrors() }
 }
 
-async function collectCandidatesFromBrowser(options: CommandOptions): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
+async function collectCandidatesFromBrowser(
+  options: CommandOptions,
+): Promise<{ candidates: ExtractedToken[]; errors: string[] }> {
   const extractor = new BrowserTokenExtractor(undefined, { debug: options.debug })
 
   if (process.platform === 'darwin') {
@@ -77,14 +81,11 @@ async function collectCandidatesFromBrowser(options: CommandOptions): Promise<{ 
     console.log('')
   }
 
-  const candidates = 'extractAll' in extractor && typeof extractor.extractAll === 'function'
-    ? await extractor.extractAll()
-    : await extractor.extract()
-  const extractedCandidates = Array.isArray(candidates)
-    ? candidates
-    : candidates
-      ? [candidates]
-      : []
+  const candidates =
+    'extractAll' in extractor && typeof extractor.extractAll === 'function'
+      ? await extractor.extractAll()
+      : await extractor.extract()
+  const extractedCandidates = Array.isArray(candidates) ? candidates : candidates ? [candidates] : []
 
   return { candidates: extractedCandidates, errors: extractor.getErrors() }
 }
@@ -116,10 +117,7 @@ async function extractAutomatically(options: CommandOptions): Promise<Extraction
     }
 
     const message = error instanceof Error ? error.message : String(error)
-    appErrors = [
-      message,
-      ...appErrors,
-    ]
+    appErrors = [message, ...appErrors]
   }
 
   const browserResult = await extractFromBrowser(options)
@@ -132,11 +130,12 @@ async function extractAutomatically(options: CommandOptions): Promise<Extraction
 async function extractAction(options: CommandOptions): Promise<void> {
   try {
     const source = parseSource(options.source)
-    const result = source === 'browser'
-      ? await extractFromBrowser(options)
-      : source === 'app'
-        ? await extractFromApp(options)
-        : await extractAutomatically(options)
+    const result =
+      source === 'browser'
+        ? await extractFromBrowser(options)
+        : source === 'app'
+          ? await extractFromApp(options)
+          : await extractAutomatically(options)
     const { extracted, errors, accounts } = result
 
     if (options.debug) {
@@ -146,9 +145,10 @@ async function extractAction(options: CommandOptions): Promise<void> {
     }
 
     if (!extracted) {
-      const errorMessage = result.source === 'browser'
-        ? 'No token_v2 found in any browser. Make sure you are logged in to Notion in a Chromium-based browser.'
-        : 'No token_v2 found. Make sure Notion desktop app is installed and logged in.'
+      const errorMessage =
+        result.source === 'browser'
+          ? 'No token_v2 found in any browser. Make sure you are logged in to Notion in a Chromium-based browser.'
+          : 'No token_v2 found. Make sure Notion desktop app is installed and logged in.'
 
       console.log(
         formatOutput(

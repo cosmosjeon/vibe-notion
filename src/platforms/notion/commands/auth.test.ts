@@ -311,7 +311,7 @@ describe('auth extract', () => {
         setCredentials = mockSetCredentials
         getCredentials = mockGetCredentials
         remove = mockRemove
-      }
+      },
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -360,7 +360,7 @@ describe('auth extract', () => {
         setCredentials = mockSetCredentials
         getCredentials = mockGetCredentials
         remove = mockRemove
-      }
+      },
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -379,14 +379,17 @@ describe('auth extract', () => {
   test('falls back to browser extraction by default when app token is stale', async () => {
     mockAppExtract = mock(() => Promise.resolve({ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }))
     mockAppExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Astale-app-token', user_id: 'user-app' }]))
-    mockBrowserExtractAll = mock(() => Promise.resolve([{ token_v2: 'v02%3Afresh-browser-token', user_id: 'user-browser' }]))
+    mockBrowserExtractAll = mock(() =>
+      Promise.resolve([{ token_v2: 'v02%3Afresh-browser-token', user_id: 'user-browser' }]),
+    )
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock((url: string, init?: RequestInit) => {
-      const cookieHeader = init?.headers && 'cookie' in init.headers
-        ? init.headers.cookie
-        : init?.headers instanceof Headers
-          ? init.headers.get('cookie')
-          : undefined
+      const cookieHeader =
+        init?.headers && 'cookie' in init.headers
+          ? init.headers.cookie
+          : init?.headers instanceof Headers
+            ? init.headers.get('cookie')
+            : undefined
 
       if (cookieHeader?.includes('stale-app-token')) {
         return Promise.resolve({ ok: false, status: 401 })
@@ -417,7 +420,7 @@ describe('auth extract', () => {
         setCredentials = mockSetCredentials
         getCredentials = mockGetCredentials
         remove = mockRemove
-      }
+      },
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -538,17 +541,20 @@ describe('auth extract', () => {
   })
 
   test('skips stale browser candidates and stores the first valid one', async () => {
-    mockBrowserExtractAll = mock(() => Promise.resolve([
-      { token_v2: 'v02%3Astale-token', user_id: 'user-stale' },
-      { token_v2: 'v02%3Afresh-token', user_id: 'user-fresh' },
-    ]))
+    mockBrowserExtractAll = mock(() =>
+      Promise.resolve([
+        { token_v2: 'v02%3Astale-token', user_id: 'user-stale' },
+        { token_v2: 'v02%3Afresh-token', user_id: 'user-fresh' },
+      ]),
+    )
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock((url: string, init?: RequestInit) => {
-      const cookieHeader = init?.headers && 'cookie' in init.headers
-        ? init.headers.cookie
-        : init?.headers instanceof Headers
-          ? init.headers.get('cookie')
-          : undefined
+      const cookieHeader =
+        init?.headers && 'cookie' in init.headers
+          ? init.headers.cookie
+          : init?.headers instanceof Headers
+            ? init.headers.get('cookie')
+            : undefined
 
       if (cookieHeader?.includes('stale-token')) {
         return Promise.resolve({ ok: false, status: 401 })
@@ -578,10 +584,12 @@ describe('auth extract', () => {
   })
 
   test('stores every valid browser account instead of stopping at the first success', async () => {
-    mockBrowserExtractAll = mock(() => Promise.resolve([
-      { token_v2: 'v02%3Afirst-valid-token', user_id: 'user-1' },
-      { token_v2: 'v02%3Asecond-valid-token', user_id: 'user-2', user_ids: ['user-2', 'user-3'] },
-    ]))
+    mockBrowserExtractAll = mock(() =>
+      Promise.resolve([
+        { token_v2: 'v02%3Afirst-valid-token', user_id: 'user-1' },
+        { token_v2: 'v02%3Asecond-valid-token', user_id: 'user-2', user_ids: ['user-2', 'user-3'] },
+      ]),
+    )
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock(() => Promise.resolve({ ok: true }))
 
@@ -617,10 +625,12 @@ describe('auth extract', () => {
   })
 
   test('stores every valid app account instead of stopping at the first success', async () => {
-    mockAppExtractAll = mock(() => Promise.resolve([
-      { token_v2: 'v02%3Afirst-app-token', user_id: 'user-app-1' },
-      { token_v2: 'v02%3Asecond-app-token', user_id: 'user-app-2' },
-    ]))
+    mockAppExtractAll = mock(() =>
+      Promise.resolve([
+        { token_v2: 'v02%3Afirst-app-token', user_id: 'user-app-1' },
+        { token_v2: 'v02%3Asecond-app-token', user_id: 'user-app-2' },
+      ]),
+    )
     mockSetCredentials = mock(() => Promise.resolve())
     mockFetch = mock(() => Promise.resolve({ ok: true }))
 
@@ -651,10 +661,12 @@ describe('auth extract', () => {
   })
 
   test('returns no browser token when every candidate is invalid', async () => {
-    mockBrowserExtractAll = mock(() => Promise.resolve([
-      { token_v2: 'v02%3Astale-token-1', user_id: 'user-1' },
-      { token_v2: 'v02%3Astale-token-2', user_id: 'user-2' },
-    ]))
+    mockBrowserExtractAll = mock(() =>
+      Promise.resolve([
+        { token_v2: 'v02%3Astale-token-1', user_id: 'user-1' },
+        { token_v2: 'v02%3Astale-token-2', user_id: 'user-2' },
+      ]),
+    )
     mockFetch = mock(() => Promise.resolve({ ok: false, status: 401 }))
 
     mock.module('../browser-token-extractor', () => ({
