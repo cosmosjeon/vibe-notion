@@ -20,6 +20,7 @@ import { uploadFileOnly } from '@/platforms/notion/upload'
 import { preprocessMarkdownImages } from '@/shared/markdown/preprocess-images'
 import { readMarkdownInput } from '@/shared/markdown/read-input'
 import { markdownToBlocks } from '@/shared/markdown/to-notion-internal'
+import type { InternalBlockDefinition } from '@/shared/markdown/types'
 import { handleNotionError } from '@/shared/utils/error-handler'
 import { formatNotionId } from '@/shared/utils/id'
 import { formatOutput } from '@/shared/utils/output'
@@ -92,6 +93,43 @@ type Operation = {
 }
 
 const LOCAL_MARKDOWN_IMAGE_PATTERN = /!\[[^\]]*\]\((?![^)]+:\/\/)[^)]+\)/
+
+function appendBlockOperations(
+  operations: Operation[],
+  def: InternalBlockDefinition,
+  blockId: string,
+  parentId: string,
+  spaceId: string,
+): void {
+  operations.push(
+    {
+      pointer: { table: 'block', id: blockId, spaceId },
+      command: 'set',
+      path: [],
+      args: {
+        type: def.type,
+        id: blockId,
+        version: 1,
+        parent_id: parentId,
+        parent_table: 'block',
+        alive: true,
+        properties: def.properties ?? {},
+        ...(def.format ? { format: def.format } : {}),
+        space_id: spaceId,
+      },
+    },
+    {
+      pointer: { table: 'block', id: parentId, spaceId },
+      command: 'listAfter',
+      path: ['content'],
+      args: { id: blockId },
+    },
+  )
+
+  for (const child of def.children ?? []) {
+    appendBlockOperations(operations, child, generateId(), blockId, spaceId)
+  }
+}
 
 function pickBlock(response: SyncRecordValuesResponse, blockId: string): BlockRecord | undefined {
   const raw = response.recordMap.block[blockId] ?? Object.values(response.recordMap.block)[0]
@@ -345,31 +383,7 @@ export async function handlePageCreate(
       const blockOperations: Operation[] = []
 
       for (const def of blockDefs) {
-        const newBlockId = generateId()
-
-        blockOperations.push(
-          {
-            pointer: { table: 'block', id: newBlockId, spaceId },
-            command: 'set',
-            path: [],
-            args: {
-              type: def.type,
-              id: newBlockId,
-              version: 1,
-              parent_id: newPageId,
-              parent_table: 'block',
-              alive: true,
-              properties: def.properties ?? {},
-              space_id: spaceId,
-            },
-          },
-          {
-            pointer: { table: 'block', id: newPageId, spaceId },
-            command: 'listAfter',
-            path: ['content'],
-            args: { id: newBlockId },
-          },
-        )
+        appendBlockOperations(blockOperations, def, generateId(), newPageId, spaceId)
       }
 
       await internalRequest(tokenV2, 'saveTransactions', {
@@ -519,32 +533,10 @@ export async function handlePageUpdate(
       })
     }
 
-    const appendOps: Operation[] = newBlocks.flatMap((def) => {
-      const newBlockId = generateId()
-      return [
-        {
-          pointer: { table: 'block' as const, id: newBlockId, spaceId },
-          command: 'set' as const,
-          path: [] as string[],
-          args: {
-            type: def.type,
-            id: newBlockId,
-            version: 1,
-            parent_id: pageId,
-            parent_table: 'block',
-            alive: true,
-            properties: def.properties ?? {},
-            space_id: spaceId,
-          },
-        },
-        {
-          pointer: { table: 'block' as const, id: pageId, spaceId },
-          command: 'listAfter' as const,
-          path: ['content'],
-          args: { id: newBlockId },
-        },
-      ]
-    })
+    const appendOps: Operation[] = []
+    for (const def of newBlocks) {
+      appendBlockOperations(appendOps, def, generateId(), pageId, spaceId)
+    }
 
     try {
       await internalRequest(tokenV2, 'saveTransactions', {
