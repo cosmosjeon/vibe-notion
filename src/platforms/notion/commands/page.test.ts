@@ -641,6 +641,153 @@ describe('PageCommand', () => {
     expect(result.type).toBe('page')
   })
 
+  test('page update --replace-content preserves markdown block children and table format', async () => {
+    let idCounter = 0
+    type SavedOperation = {
+      command: string
+      pointer: { id: string }
+      args: {
+        id?: string
+        type?: string
+        parent_id?: string
+        format?: Record<string, unknown>
+        properties?: Record<string, unknown>
+      }
+    }
+    type SaveTransactionsBody = { transactions: Array<{ operations: SavedOperation[] }> }
+    const savedOperationBatches: SavedOperation[][] = []
+
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: SaveTransactionsBody) => {
+      if (endpoint === 'loadPageChunk') {
+        return {
+          recordMap: {
+            block: {
+              'page-1': {
+                value: {
+                  id: 'page-1',
+                  type: 'page',
+                  content: [],
+                },
+                role: 'editor',
+              },
+            },
+          },
+        }
+      }
+      if (endpoint === 'saveTransactions') {
+        savedOperationBatches.push(body.transactions[0].operations)
+        return {}
+      }
+      if (endpoint === 'syncRecordValues') {
+        return {
+          recordMap: {
+            block: {
+              'page-1': {
+                value: {
+                  id: 'page-1',
+                  type: 'page',
+                  space_id: 'space-123',
+                  properties: {
+                    title: [['Updated Page']],
+                  },
+                },
+                role: 'editor',
+              },
+            },
+          },
+        }
+      }
+      return {}
+    })
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mock(async () => ({ token_v2: 'test-token' })),
+      generateId: mock(() => `block-${idCounter++}`),
+      resolveSpaceId: mock(async () => 'space-123'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    mock.module('@/shared/markdown/read-input', () => ({
+      readMarkdownInput: mock(
+        () => '### Decision table\n\n| No | Status |\n| --- | --- |\n| Q1 | ✅ |\n\n- Parent\n  - Child',
+      ),
+    }))
+
+    mock.module('@/shared/markdown/to-notion-internal', () => ({
+      markdownToBlocks: mock(() => [
+        {
+          type: 'sub_sub_header',
+          properties: { title: [['Decision table']] },
+        },
+        {
+          type: 'table',
+          format: {
+            table_block_column_order: ['col-a', 'col-b'],
+            table_block_column_header: true,
+          },
+          children: [
+            {
+              type: 'table_row',
+              properties: { 'col-a': [['No']], 'col-b': [['Status']] },
+            },
+            {
+              type: 'table_row',
+              properties: { 'col-a': [['Q1']], 'col-b': [['✅']] },
+            },
+          ],
+        },
+        {
+          type: 'bulleted_list',
+          properties: { title: [['Parent']] },
+          children: [{ type: 'bulleted_list', properties: { title: [['Child']] } }],
+        },
+      ]),
+    }))
+
+    const { handlePageUpdate } = await import('./page')
+    await handlePageUpdate('test-token', {
+      page_id: 'page-1',
+      replaceContent: true,
+      markdown: 'content',
+      workspaceId: 'space-123',
+    })
+
+    expect(savedOperationBatches).toHaveLength(1)
+    const appendOps = savedOperationBatches[0]
+    expect(appendOps).toHaveLength(12)
+
+    const tableSetOp = appendOps.find((op) => op.command === 'set' && op.args.type === 'table')
+    expect(tableSetOp?.args.format).toEqual({
+      table_block_column_order: ['col-a', 'col-b'],
+      table_block_column_header: true,
+    })
+
+    const tableRowSetOps = appendOps.filter((op) => op.command === 'set' && op.args.type === 'table_row')
+    expect(tableRowSetOps).toHaveLength(2)
+    expect(tableRowSetOps[0].args.parent_id).toBe(tableSetOp?.args.id)
+    expect(tableRowSetOps[1].args.parent_id).toBe(tableSetOp?.args.id)
+    const tableRowListOps = tableRowSetOps.map((rowOp) =>
+      appendOps.find((op) => op.command === 'listAfter' && op.args.id === rowOp.args.id),
+    )
+    expect(tableRowListOps[0]?.pointer.id).toBe(tableSetOp?.args.id)
+    expect(tableRowListOps[1]?.pointer.id).toBe(tableSetOp?.args.id)
+
+    const bulletSetOps = appendOps.filter((op) => op.command === 'set' && op.args.type === 'bulleted_list')
+    expect(bulletSetOps).toHaveLength(2)
+    expect(bulletSetOps[1].args.parent_id).toBe(bulletSetOps[0].args.id)
+    const childBulletListOp = appendOps.find(
+      (op) => op.command === 'listAfter' && op.args.id === bulletSetOps[1].args.id,
+    )
+    expect(childBulletListOp?.pointer.id).toBe(bulletSetOps[0].args.id)
+  })
+
   test('page update --icon updates page icon', async () => {
     const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: any) => {
       if (endpoint === 'saveTransactions') {
