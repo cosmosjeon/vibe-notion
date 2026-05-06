@@ -122,6 +122,12 @@ vibe-notion page get <page-id> --workspace-id <workspace-id> --pretty
 
 No OAuth flow. No integration to create. No pages to connect.
 
+The extracted `token_v2` is stored at `~/.config/vibe-notion/credentials.json`. To use a custom location, set `VIBE_NOTION_CONFIG_DIR`:
+
+```bash
+export VIBE_NOTION_CONFIG_DIR=/path/to/config
+```
+
 ### `vibe-notionbot` — act as a bot
 
 ```bash

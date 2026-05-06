@@ -18,13 +18,25 @@ export interface CredentialConfig {
   credentials: NotionCredentials | null
 }
 
+export function getDefaultConfigDir(): string {
+  const override = process.env.VIBE_NOTION_CONFIG_DIR
+  if (override && override.length > 0) {
+    return override
+  }
+  return join(homedir(), '.config', 'vibe-notion')
+}
+
 export class CredentialManager {
   private configDir: string
   private credentialsPath: string
 
   constructor(configDir?: string) {
-    this.configDir = configDir ?? join(homedir(), '.config', 'vibe-notion')
+    this.configDir = configDir ?? getDefaultConfigDir()
     this.credentialsPath = join(this.configDir, 'credentials.json')
+  }
+
+  getConfigDir(): string {
+    return this.configDir
   }
 
   async load(): Promise<CredentialConfig> {
