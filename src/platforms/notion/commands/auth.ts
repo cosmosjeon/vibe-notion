@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 
 import { BrowserTokenExtractor } from '@/platforms/notion/browser-token-extractor'
-import { CredentialManager } from '@/platforms/notion/credential-manager'
+import { CredentialManager, getDefaultConfigDir } from '@/platforms/notion/credential-manager'
 import {
   maskAccount,
   maskToken,
@@ -47,7 +47,7 @@ async function collectCandidatesFromApp(
     console.log('  What happens:')
     console.log("    1. We read the encrypted cookie from Notion's local storage")
     console.log('    2. macOS Keychain decrypts it (requires your password)')
-    console.log('    3. The token is stored locally in ~/.config/vibe-notion/')
+    console.log(`    3. The token is stored locally in ${getDefaultConfigDir()}/`)
     console.log('')
     console.log('  Your password is never stored or transmitted anywhere.')
     console.log('')

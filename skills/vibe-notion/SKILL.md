@@ -86,7 +86,7 @@ Credentials (`token_v2`) are auto-extracted from the Notion desktop app when you
 
 On macOS, your system may prompt for Keychain access on first use — this is normal and required to decrypt the cookie.
 
-The extracted `token_v2` is stored at `~/.config/vibe-notion/credentials.json` with `0600` permissions.
+The extracted `token_v2` is stored at `~/.config/vibe-notion/credentials.json` with `0600` permissions. Set the `VIBE_NOTION_CONFIG_DIR` environment variable to use a custom config directory.
 
 ## Memory
 

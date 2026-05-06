@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { CredentialManager } from './credential-manager'
+import { CredentialManager, getDefaultConfigDir } from './credential-manager'
 
 describe('CredentialManager', () => {
   let configDir: string
@@ -108,5 +108,76 @@ describe('CredentialManager', () => {
     writeFileSync(join(configDir, 'credentials.json'), 'not json at all')
     const creds = await manager.getCredentials()
     expect(creds).toBeNull()
+  })
+
+  test('getConfigDir returns the configured directory', () => {
+    expect(manager.getConfigDir()).toBe(configDir)
+  })
+})
+
+describe('getDefaultConfigDir', () => {
+  const originalEnv = process.env.VIBE_NOTION_CONFIG_DIR
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.VIBE_NOTION_CONFIG_DIR
+    } else {
+      process.env.VIBE_NOTION_CONFIG_DIR = originalEnv
+    }
+  })
+
+  test('returns ~/.config/vibe-notion when env var is unset', () => {
+    delete process.env.VIBE_NOTION_CONFIG_DIR
+    expect(getDefaultConfigDir()).toBe(join(homedir(), '.config', 'vibe-notion'))
+  })
+
+  test('returns ~/.config/vibe-notion when env var is empty', () => {
+    process.env.VIBE_NOTION_CONFIG_DIR = ''
+    expect(getDefaultConfigDir()).toBe(join(homedir(), '.config', 'vibe-notion'))
+  })
+
+  test('returns env var value when set', () => {
+    process.env.VIBE_NOTION_CONFIG_DIR = '/custom/config/path'
+    expect(getDefaultConfigDir()).toBe('/custom/config/path')
+  })
+})
+
+describe('CredentialManager with VIBE_NOTION_CONFIG_DIR env var', () => {
+  const originalEnv = process.env.VIBE_NOTION_CONFIG_DIR
+  let envConfigDir: string
+
+  beforeEach(() => {
+    envConfigDir = mkdtempSync(join(tmpdir(), 'vibe-notion-env-credentials-'))
+    process.env.VIBE_NOTION_CONFIG_DIR = envConfigDir
+  })
+
+  afterEach(() => {
+    rmSync(envConfigDir, { recursive: true, force: true })
+    if (originalEnv === undefined) {
+      delete process.env.VIBE_NOTION_CONFIG_DIR
+    } else {
+      process.env.VIBE_NOTION_CONFIG_DIR = originalEnv
+    }
+  })
+
+  test('uses env var as default config dir when constructor arg omitted', async () => {
+    const manager = new CredentialManager()
+    expect(manager.getConfigDir()).toBe(envConfigDir)
+
+    await manager.setCredentials({ token_v2: 'v02%3Atoken', user_id: 'user-env' })
+    expect(existsSync(join(envConfigDir, 'credentials.json'))).toBe(true)
+
+    const creds = await manager.getCredentials()
+    expect(creds).toEqual({ token_v2: 'v02%3Atoken', user_id: 'user-env' })
+  })
+
+  test('explicit constructor arg overrides env var', () => {
+    const explicitDir = mkdtempSync(join(tmpdir(), 'vibe-notion-explicit-'))
+    try {
+      const manager = new CredentialManager(explicitDir)
+      expect(manager.getConfigDir()).toBe(explicitDir)
+    } finally {
+      rmSync(explicitDir, { recursive: true, force: true })
+    }
   })
 })
