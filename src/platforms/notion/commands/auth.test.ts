@@ -58,6 +58,7 @@ beforeEach(() => {
       getCredentials = mockGetCredentials
       remove = mockRemove
     },
+    getDefaultConfigDir: () => '/mock/config/dir',
   }))
 
   globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -84,6 +85,7 @@ describe('auth status', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
     globalThis.fetch = mockFetch as unknown as typeof fetch
 
@@ -111,6 +113,7 @@ describe('auth status', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
     globalThis.fetch = mockFetch as unknown as typeof fetch
 
@@ -137,6 +140,7 @@ describe('auth status', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
     globalThis.fetch = mockFetch as unknown as typeof fetch
 
@@ -164,6 +168,7 @@ describe('auth status', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     const { authCommand } = await import('./auth')
@@ -188,6 +193,7 @@ describe('auth logout', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     const { authCommand } = await import('./auth')
@@ -226,6 +232,7 @@ describe('auth extract', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -264,6 +271,7 @@ describe('auth extract', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -312,6 +320,7 @@ describe('auth extract', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -361,6 +370,7 @@ describe('auth extract', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
@@ -421,6 +431,7 @@ describe('auth extract', () => {
         getCredentials = mockGetCredentials
         remove = mockRemove
       },
+      getDefaultConfigDir: () => '/mock/config/dir',
     }))
 
     globalThis.fetch = mockFetch as unknown as typeof fetch
