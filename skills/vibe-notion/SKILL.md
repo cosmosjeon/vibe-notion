@@ -413,10 +413,11 @@ vibe-notion search "query" --workspace-id <workspace_id> --sort lastEdited --pre
 # List all workspaces accessible to the current user (members and guests)
 vibe-notion workspace list --pretty
 
-# Resolve the workspace ID that owns a page or block.
-# Useful when you only have a Notion URL (which doesn't include workspace info)
-# and need to find the --workspace-id to use for other commands.
-vibe-notion workspace resolve <page_id> --pretty
+# Resolve the workspace ID that owns a page, block, database, or view.
+# Accepts either a raw ID or a full Notion URL — the page ID is extracted from
+# the URL path automatically. Useful when you only have a Notion URL and need
+# to find the --workspace-id to use for other commands.
+vibe-notion workspace resolve <page_id_or_url> --pretty
 ```
 
 > **Tip**: `block get`, `page get`, `page create`, and `page update` outputs now include a `space_id` field, which is the workspace ID that owns the page or block. Use this to discover the right `--workspace-id` for subsequent operations.

@@ -92,39 +92,53 @@ async function getSpacesResponses(creds: NotionCredentials): Promise<GetSpacesRe
 }
 
 type SyncRecordValuesResponse = {
-  recordMap?: {
-    block?: Record<string, Record<string, unknown>>
-  }
+  recordMap?: Record<string, Record<string, Record<string, unknown>> | undefined>
 }
 
-function extractSpaceIdFromBlockRecord(record: Record<string, unknown> | undefined): string | undefined {
+const SPACE_ID_PROBE_TABLES = ['block', 'collection', 'collection_view'] as const
+
+function extractRecordInner(record: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!record) return undefined
   const outer = record.value as Record<string, unknown> | undefined
-  const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+  return typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+}
+
+function extractSpaceIdFromRecord(record: Record<string, unknown> | undefined): string | undefined {
+  if (!record) return undefined
+  const inner = extractRecordInner(record)
   const innerSpaceId = typeof inner?.space_id === 'string' ? (inner.space_id as string) : undefined
   const topSpaceId = typeof record.spaceId === 'string' ? (record.spaceId as string) : undefined
   return innerSpaceId ?? topSpaceId
 }
 
-async function resolveSpaceIdForToken(token: string, blockId: string): Promise<string | undefined> {
+function recordIdMatches(record: Record<string, unknown> | undefined, targetId: string): boolean {
+  const inner = extractRecordInner(record)
+  return typeof inner?.id === 'string' && (inner.id as string) === targetId
+}
+
+async function resolveSpaceIdForToken(token: string, targetId: string): Promise<{ spaceId?: string; error?: Error }> {
   try {
     const result = (await internalRequest(token, 'syncRecordValues', {
-      requests: [{ pointer: { table: 'block', id: blockId }, version: -1 }],
+      requests: SPACE_ID_PROBE_TABLES.map((table) => ({ pointer: { table, id: targetId }, version: -1 })),
     })) as SyncRecordValuesResponse
-    const blockMap = result.recordMap?.block
-    if (!blockMap) return undefined
-    const direct = blockMap[blockId]
-    if (direct) {
-      const spaceId = extractSpaceIdFromBlockRecord(direct)
-      if (spaceId) return spaceId
+
+    for (const table of SPACE_ID_PROBE_TABLES) {
+      const records = result.recordMap?.[table]
+      if (!records) continue
+      const direct = records[targetId]
+      if (direct) {
+        const spaceId = extractSpaceIdFromRecord(direct)
+        if (spaceId) return { spaceId }
+      }
+      for (const record of Object.values(records)) {
+        if (!recordIdMatches(record, targetId)) continue
+        const spaceId = extractSpaceIdFromRecord(record)
+        if (spaceId) return { spaceId }
+      }
     }
-    for (const record of Object.values(blockMap)) {
-      const spaceId = extractSpaceIdFromBlockRecord(record)
-      if (spaceId) return spaceId
-    }
-    return undefined
-  } catch {
-    return undefined
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
   }
 }
 
@@ -143,25 +157,38 @@ async function lookupWorkspaceName(token: string, workspaceId: string): Promise<
   return undefined
 }
 
-async function resolveAction(rawPageId: string, options: CommandOptions): Promise<void> {
-  const pageId = formatNotionId(rawPageId)
+function extractPageIdFromInput(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed.includes('/')) return trimmed
+  const withoutQuery = trimmed.split('?', 1)[0]
+  const segments = withoutQuery.split('/').filter(Boolean)
+  const last = segments[segments.length - 1] ?? ''
+  const tail = last.includes('-') ? (last.split('-').pop() ?? last) : last
+  return tail || trimmed
+}
+
+async function resolveAction(rawInput: string, options: CommandOptions): Promise<void> {
+  const pageId = formatNotionId(extractPageIdFromInput(rawInput))
   try {
     const creds = await getCredentialsOrExit()
     const tokens = getAccountTokens(creds)
 
     let workspaceId: string | undefined
     let matchedToken: string | undefined
+    let lastError: Error | undefined
     for (const token of tokens) {
-      const spaceId = await resolveSpaceIdForToken(token, pageId)
+      const { spaceId, error } = await resolveSpaceIdForToken(token, pageId)
       if (spaceId) {
         workspaceId = spaceId
         matchedToken = token
         break
       }
+      if (error) lastError = error
     }
 
     if (!workspaceId || !matchedToken) {
-      throw new Error(`Could not resolve workspace for page: ${pageId}`)
+      const suffix = lastError ? ` Last error: ${lastError.message}` : ''
+      throw new Error(`Could not resolve workspace for page: ${pageId}.${suffix}`)
     }
 
     const name = await lookupWorkspaceName(matchedToken, workspaceId)

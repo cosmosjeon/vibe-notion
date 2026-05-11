@@ -565,6 +565,222 @@ describe('WorkspaceCommand', () => {
     expect(exitCode).toBe(1)
   })
 
+  test('workspace resolve accepts a full Notion URL', async () => {
+    const seenIds: string[] = []
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        const requests = (body as { requests: { pointer: { id: string } }[] }).requests
+        seenIds.push(requests[0].pointer.id)
+        const blockId = requests[0].pointer.id
+        return {
+          recordMap: {
+            block: {
+              [blockId]: { value: { id: blockId, type: 'page', space_id: 'space-from-url' } },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') return {}
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(
+        ['resolve', 'https://www.notion.so/devxoul/My-Page-12345678123412341234123456789012?source=copy_link'],
+        { from: 'user' },
+      )
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(seenIds[0]).toBe('12345678-1234-1234-1234-123456789012')
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.page_id).toBe('12345678-1234-1234-1234-123456789012')
+    expect(result.workspace_id).toBe('space-from-url')
+  })
+
+  test('workspace resolve probes the collection table for database IDs', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        const requests = (body as { requests: { pointer: { id: string; table: string } }[] }).requests
+        const tables = requests.map((r) => r.pointer.table)
+        expect(tables).toContain('block')
+        expect(tables).toContain('collection')
+        expect(tables).toContain('collection_view')
+        return {
+          recordMap: {
+            collection: {
+              [requests[0].pointer.id]: { value: { id: requests[0].pointer.id, space_id: 'space-db' } },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') return {}
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.workspace_id).toBe('space-db')
+  })
+
+  test('workspace resolve includes the last underlying error when nothing resolves', async () => {
+    const mockInternalRequest = mock(async () => {
+      throw new Error('Notion internal API error: 401: token expired')
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const errorOutput: string[] = []
+    const originalError = console.error
+    console.error = (msg: string) => errorOutput.push(msg)
+
+    let exitCode: number | undefined
+    const originalExit = process.exit
+    process.exit = ((code: number) => {
+      exitCode = code
+    }) as never
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected
+    }
+
+    console.error = originalError
+    process.exit = originalExit
+
+    expect(errorOutput.length).toBeGreaterThan(0)
+    const errorMsg = JSON.parse(errorOutput[0])
+    expect(errorMsg.error).toContain('Last error: Notion internal API error: 401: token expired')
+    expect(exitCode).toBe(1)
+  })
+
+  test('workspace resolve ignores unrelated records returned in the same response', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        const requests = (body as { requests: { pointer: { id: string } }[] }).requests
+        const requestedId = requests[0].pointer.id
+        return {
+          recordMap: {
+            block: {
+              'unrelated-block-id': { value: { id: 'unrelated-block-id', space_id: 'wrong-space' } },
+              [requestedId]: { value: { id: requestedId, space_id: 'right-space' } },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') return {}
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.workspace_id).toBe('right-space')
+  })
+
   test('workspace list handles errors', async () => {
     const mockInternalRequest = mock(async () => {
       throw new Error('API error')
