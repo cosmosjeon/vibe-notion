@@ -1061,17 +1061,47 @@ function getAccountTokensImpl(creds: CredentialsLike): Array<{ token_v2: string;
   return tokens
 }
 
+const PROBE_TABLES = ['block', 'collection', 'collection_view'] as const
+
+async function probeSpaceIdForTokenImpl(
+  tokenV2: string,
+  targetId: string,
+): Promise<{ spaceId?: string; error?: Error }> {
+  try {
+    const result = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
+      requests: PROBE_TABLES.map((table) => ({ pointer: { table, id: targetId }, version: -1 })),
+    })) as { recordMap?: Record<string, Record<string, Record<string, unknown>> | undefined> }
+
+    for (const table of PROBE_TABLES) {
+      const records = result.recordMap?.[table]
+      if (!records) continue
+      const matched = records[targetId] ?? Object.values(records)[0]
+      const outer = matched?.value as Record<string, unknown> | undefined
+      const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+      const spaceId =
+        (inner?.space_id as string) ?? ((matched as Record<string, unknown> | undefined)?.spaceId as string)
+      if (spaceId) return { spaceId }
+    }
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
+  }
+}
+
 async function resolveWorkspaceFromTargetImpl(
   creds: CredentialsLike,
   targetId: string,
 ): Promise<{ workspaceId: string; tokenV2: string; userId?: string }> {
+  let lastError: Error | undefined
   for (const account of getAccountTokensImpl(creds)) {
-    try {
-      const workspaceId = await resolveSpaceId(account.token_v2, targetId)
-      return { workspaceId, tokenV2: account.token_v2, userId: account.user_id }
-    } catch {}
+    const { spaceId, error } = await probeSpaceIdForTokenImpl(account.token_v2, targetId)
+    if (spaceId) {
+      return { workspaceId: spaceId, tokenV2: account.token_v2, userId: account.user_id }
+    }
+    if (error) lastError = error
   }
-  throw new Error(`Could not auto-resolve --workspace-id for ${targetId}.`)
+  const suffix = lastError ? ` Last error: ${lastError.message}` : ''
+  throw new Error(`Could not auto-resolve --workspace-id for ${targetId}.${suffix}`)
 }
 
 async function ensureWorkspaceContextImpl(
@@ -1124,10 +1154,39 @@ describe('resolveWorkspaceFromTarget', () => {
     expect(result).toEqual({ workspaceId: 'space-abc', tokenV2: 'secondary', userId: undefined })
   })
 
+  test('resolves from the collection table when the target is a database id', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: { collection: { 'coll-1': { value: { space_id: 'space-from-coll' } } } },
+      })
+    const result = await resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'coll-1')
+    expect(result.workspaceId).toBe('space-from-coll')
+  })
+
+  test('resolves from the collection_view table when the target is a view id', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: {
+          collection_view: {
+            'view-1': { value: { value: { space_id: 'space-from-view' }, role: 'editor' } },
+          },
+        },
+      })
+    const result = await resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'view-1')
+    expect(result.workspaceId).toBe('space-from-view')
+  })
+
   test('throws when no account can resolve the target', async () => {
-    _mockInternalRequest = () => Promise.reject(new Error('not found'))
+    _mockInternalRequest = () => Promise.resolve({ recordMap: {} })
+    await expect(resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'unknown-id')).rejects.toThrow(
+      'Could not auto-resolve --workspace-id for unknown-id.',
+    )
+  })
+
+  test('includes the last underlying error in the failure message', async () => {
+    _mockInternalRequest = () => Promise.reject(new Error('Notion internal API error: 401: token expired'))
     await expect(resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'block-1')).rejects.toThrow(
-      'Could not auto-resolve --workspace-id for block-1.',
+      'Last error: Notion internal API error: 401: token expired',
     )
   })
 })
