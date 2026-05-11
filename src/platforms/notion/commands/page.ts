@@ -27,6 +27,7 @@ import { formatOutput } from '@/shared/utils/output'
 
 import {
   type CommandOptions,
+  ensureWorkspaceContext,
   generateId,
   getCredentialsOrExit,
   resolveAndSetActiveUserId,
@@ -35,8 +36,8 @@ import {
   resolveSpaceId,
 } from './helpers'
 
-type WorkspaceOptions = CommandOptions & { workspaceId: string }
-type ListPageOptions = WorkspaceOptions & { depth?: string }
+type WorkspaceOptions = CommandOptions & { workspaceId?: string }
+type ListPageOptions = CommandOptions & { workspaceId: string; depth?: string }
 type LoadPageChunkOptions = WorkspaceOptions & { limit?: string; backlinks?: boolean }
 type CreatePageOptions = WorkspaceOptions & {
   parent?: string
@@ -254,7 +255,8 @@ async function getAction(rawPageId: string, options: LoadPageChunkOptions): Prom
   const pageId = formatNotionId(rawPageId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, pageId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
     let cursor: { stack: unknown[] } = { stack: [] }
     let chunkNumber = 0
@@ -262,7 +264,7 @@ async function getAction(rawPageId: string, options: LoadPageChunkOptions): Prom
     const extraRecordMap: Record<string, Record<string, unknown>> = {}
 
     do {
-      const chunk = (await internalRequest(creds.token_v2, 'loadPageChunk', {
+      const chunk = (await internalRequest(ctx.tokenV2, 'loadPageChunk', {
         pageId,
         limit: options.limit ? Number(options.limit) : 100,
         cursor,
@@ -283,10 +285,10 @@ async function getAction(rawPageId: string, options: LoadPageChunkOptions): Prom
     const result = formatPageGet(blocks as unknown as Record<string, Record<string, unknown>>, pageId, extraRecordMap)
 
     if (options.backlinks) {
-      const backlinksResponse = (await internalRequest(creds.token_v2, 'getBacklinksForBlock', {
+      const backlinksResponse = (await internalRequest(ctx.tokenV2, 'getBacklinksForBlock', {
         blockId: pageId,
       })) as Record<string, unknown>
-      const userLookup = await resolveBacklinkUsers(creds.token_v2, backlinksResponse)
+      const userLookup = await resolveBacklinkUsers(ctx.tokenV2, backlinksResponse)
       const output = { ...result, backlinks: formatBacklinks(backlinksResponse, userLookup) }
       console.log(formatOutput(output, options.pretty))
     } else {
@@ -404,12 +406,23 @@ export async function handlePageCreate(
 async function createAction(options: CreatePageOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
-    const result = await handlePageCreate(creds.token_v2, {
+    let workspaceId = options.workspaceId
+    let tokenV2 = creds.token_v2
+    if (options.parent) {
+      const ctx = await ensureWorkspaceContext(creds, workspaceId, formatNotionId(options.parent))
+      workspaceId = ctx.workspaceId
+      tokenV2 = ctx.tokenV2
+    } else if (!workspaceId) {
+      throw new Error(
+        'Creating a root page requires --workspace-id. Provide --parent to auto-resolve, or pass --workspace-id explicitly.',
+      )
+    }
+    const result = await handlePageCreate(tokenV2, {
       parent: options.parent,
       title: options.title,
       markdown: options.markdown,
       markdownFile: options.markdownFile,
-      workspaceId: options.workspaceId,
+      workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -558,15 +571,17 @@ export async function handlePageUpdate(
 
 async function updateAction(rawPageId: string, options: UpdatePageOptions): Promise<void> {
   try {
+    const pageId = formatNotionId(rawPageId)
     const creds = await getCredentialsOrExit()
-    const result = await handlePageUpdate(creds.token_v2, {
-      page_id: rawPageId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, pageId)
+    const result = await handlePageUpdate(ctx.tokenV2, {
+      page_id: pageId,
       title: options.title,
       icon: options.icon,
       replaceContent: options.replaceContent,
       markdown: options.markdown,
       markdownFile: options.markdownFile,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -640,10 +655,12 @@ export async function handlePageProperties(
 
 async function propertiesAction(rawPageId: string, options: PropertiesOptions): Promise<void> {
   try {
+    const pageId = formatNotionId(rawPageId)
     const creds = await getCredentialsOrExit()
-    const result = await handlePageProperties(creds.token_v2, {
-      page_id: rawPageId,
-      workspaceId: options.workspaceId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, pageId)
+    const result = await handlePageProperties(ctx.tokenV2, {
+      page_id: pageId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -715,16 +732,20 @@ export async function handlePageArchive(
 
 async function archiveAction(rawPageId: string, options: ArchivePageOptions): Promise<void> {
   try {
+    const pageId = formatNotionId(rawPageId)
     const creds = await getCredentialsOrExit()
-    const result = await handlePageArchive(creds.token_v2, {
-      page_id: rawPageId,
-      workspaceId: options.workspaceId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, pageId)
+    const result = await handlePageArchive(ctx.tokenV2, {
+      page_id: pageId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
     handleNotionError(error)
   }
 }
+
+const WORKSPACE_ID_OPTION_DESC = 'Workspace ID (optional; auto-resolved from the target page when omitted)'
 
 export const pageCommand = new Command('page')
   .description('Page commands')
@@ -740,7 +761,7 @@ export const pageCommand = new Command('page')
     new Command('get')
       .description('Retrieve a page and its content')
       .argument('<page_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--limit <n>', 'Block limit')
       .option('--backlinks', 'Include backlinks (pages that link to this page)')
       .option('--pretty', 'Pretty print JSON output')
@@ -749,7 +770,7 @@ export const pageCommand = new Command('page')
   .addCommand(
     new Command('create')
       .description('Create a new page')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', 'Workspace ID (auto-resolved from --parent when omitted; required for root pages)')
       .option('--parent <id>', 'Parent page or block ID (optional, creates at workspace root if omitted)')
       .requiredOption('--title <title>', 'Page title')
       .option('--markdown <text>', 'Markdown content for page body')
@@ -761,7 +782,7 @@ export const pageCommand = new Command('page')
     new Command('update')
       .description('Update page properties')
       .argument('<page_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--title <title>', 'New title')
       .option('--icon <emoji>', 'Page icon emoji')
       .option('--replace-content', 'Replace all page content')
@@ -774,7 +795,7 @@ export const pageCommand = new Command('page')
     new Command('properties')
       .description('Get page or database row properties (without content blocks)')
       .argument('<page_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(propertiesAction),
   )
@@ -782,7 +803,7 @@ export const pageCommand = new Command('page')
     new Command('archive')
       .description('Archive a page')
       .argument('<page_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(archiveAction),
   )

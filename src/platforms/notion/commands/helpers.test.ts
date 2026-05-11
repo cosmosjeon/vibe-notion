@@ -1049,3 +1049,112 @@ describe('resolveBacklinkUsers', () => {
     expect(result).toEqual({ 'user-1': 'Alice' })
   })
 })
+
+type CredentialsLike = { token_v2: string; user_id?: string; accounts?: Array<{ token_v2: string; user_id?: string }> }
+
+function getAccountTokensImpl(creds: CredentialsLike): Array<{ token_v2: string; user_id?: string }> {
+  const tokens: Array<{ token_v2: string; user_id?: string }> = [{ token_v2: creds.token_v2, user_id: creds.user_id }]
+  for (const account of creds.accounts ?? []) {
+    if (tokens.some((t) => t.token_v2 === account.token_v2)) continue
+    tokens.push({ token_v2: account.token_v2, user_id: account.user_id })
+  }
+  return tokens
+}
+
+async function resolveWorkspaceFromTargetImpl(
+  creds: CredentialsLike,
+  targetId: string,
+): Promise<{ workspaceId: string; tokenV2: string; userId?: string }> {
+  for (const account of getAccountTokensImpl(creds)) {
+    try {
+      const workspaceId = await resolveSpaceId(account.token_v2, targetId)
+      return { workspaceId, tokenV2: account.token_v2, userId: account.user_id }
+    } catch {}
+  }
+  throw new Error(`Could not auto-resolve --workspace-id for ${targetId}.`)
+}
+
+async function ensureWorkspaceContextImpl(
+  creds: CredentialsLike,
+  workspaceId: string | undefined,
+  targetId: string,
+): Promise<{ workspaceId: string; tokenV2: string; userId?: string }> {
+  if (workspaceId) {
+    return { workspaceId, tokenV2: creds.token_v2, userId: creds.user_id }
+  }
+  return resolveWorkspaceFromTargetImpl(creds, targetId)
+}
+
+describe('getAccountTokens', () => {
+  test('returns the primary token first', () => {
+    const result = getAccountTokensImpl({ token_v2: 'primary', user_id: 'user-1' })
+    expect(result).toEqual([{ token_v2: 'primary', user_id: 'user-1' }])
+  })
+
+  test('appends additional accounts and deduplicates by token', () => {
+    const result = getAccountTokensImpl({
+      token_v2: 'primary',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'primary', user_id: 'user-1' },
+        { token_v2: 'secondary', user_id: 'user-2' },
+      ],
+    })
+    expect(result).toEqual([
+      { token_v2: 'primary', user_id: 'user-1' },
+      { token_v2: 'secondary', user_id: 'user-2' },
+    ])
+  })
+})
+
+describe('resolveWorkspaceFromTarget', () => {
+  test('returns workspaceId and tokenV2 from the first account that can see the target', async () => {
+    _mockInternalRequest = (tokenV2: unknown) => {
+      if (tokenV2 === 'primary') {
+        return Promise.reject(new Error('not found'))
+      }
+      return Promise.resolve({
+        recordMap: { block: { 'block-1': { value: { space_id: 'space-abc' } } } },
+      })
+    }
+    const result = await resolveWorkspaceFromTargetImpl(
+      { token_v2: 'primary', accounts: [{ token_v2: 'primary' }, { token_v2: 'secondary' }] },
+      'block-1',
+    )
+    expect(result).toEqual({ workspaceId: 'space-abc', tokenV2: 'secondary', userId: undefined })
+  })
+
+  test('throws when no account can resolve the target', async () => {
+    _mockInternalRequest = () => Promise.reject(new Error('not found'))
+    await expect(resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'block-1')).rejects.toThrow(
+      'Could not auto-resolve --workspace-id for block-1.',
+    )
+  })
+})
+
+describe('ensureWorkspaceContext', () => {
+  test('returns the explicit workspaceId without calling the API when provided', async () => {
+    let called = false
+    _mockInternalRequest = () => {
+      called = true
+      return Promise.resolve({})
+    }
+    const result = await ensureWorkspaceContextImpl(
+      { token_v2: 'primary', user_id: 'user-1' },
+      'ws-explicit',
+      'block-1',
+    )
+    expect(called).toBe(false)
+    expect(result).toEqual({ workspaceId: 'ws-explicit', tokenV2: 'primary', userId: 'user-1' })
+  })
+
+  test('falls back to auto-resolve when workspaceId is omitted', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: { block: { 'block-1': { value: { space_id: 'space-resolved' } } } },
+      })
+    const result = await ensureWorkspaceContextImpl({ token_v2: 'primary' }, undefined, 'block-1')
+    expect(result.workspaceId).toBe('space-resolved')
+    expect(result.tokenV2).toBe('primary')
+  })
+})

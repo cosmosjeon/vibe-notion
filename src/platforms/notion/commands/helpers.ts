@@ -6,6 +6,7 @@ import { CredentialManager, type NotionCredentials } from '@/platforms/notion/cr
 import { validateCandidates, withStoredAccounts } from '@/platforms/notion/extracted-token-validation'
 import { collectBacklinkUserIds, getRecordValue } from '@/platforms/notion/formatters'
 import { TokenExtractor } from '@/platforms/notion/token-extractor'
+import { formatNotionId } from '@/shared/utils/id'
 
 export type CommandOptions = { pretty?: boolean }
 
@@ -119,6 +120,58 @@ export async function resolveSpaceId(tokenV2: string, blockId: string): Promise<
     throw new Error(`Could not resolve space ID for block: ${blockId}`)
   }
   return spaceId
+}
+
+export function getAccountTokens(creds: NotionCredentials): Array<{ token_v2: string; user_id?: string }> {
+  const tokens: Array<{ token_v2: string; user_id?: string }> = [{ token_v2: creds.token_v2, user_id: creds.user_id }]
+
+  for (const account of creds.accounts ?? []) {
+    if (tokens.some((t) => t.token_v2 === account.token_v2)) continue
+    tokens.push({ token_v2: account.token_v2, user_id: account.user_id })
+  }
+
+  return tokens
+}
+
+async function probeSpaceIdForToken(tokenV2: string, blockId: string): Promise<string | undefined> {
+  try {
+    return await resolveSpaceId(tokenV2, blockId)
+  } catch {
+    return undefined
+  }
+}
+
+export type ResolvedWorkspaceContext = {
+  workspaceId: string
+  tokenV2: string
+  userId?: string
+}
+
+export async function resolveWorkspaceFromTarget(
+  creds: NotionCredentials,
+  targetId: string,
+): Promise<ResolvedWorkspaceContext> {
+  const normalizedId = formatNotionId(targetId)
+  for (const account of getAccountTokens(creds)) {
+    const workspaceId = await probeSpaceIdForToken(account.token_v2, normalizedId)
+    if (workspaceId) {
+      return { workspaceId, tokenV2: account.token_v2, userId: account.user_id }
+    }
+  }
+  throw new Error(
+    `Could not auto-resolve --workspace-id for ${targetId}. Pass --workspace-id explicitly or run 'vibe-notion workspace resolve ${targetId}' to inspect.`,
+  )
+}
+
+export async function ensureWorkspaceContext(
+  creds: NotionCredentials,
+  workspaceId: string | undefined,
+  targetId: string,
+): Promise<ResolvedWorkspaceContext> {
+  if (workspaceId) {
+    return { workspaceId, tokenV2: creds.token_v2, userId: creds.user_id }
+  }
+  return resolveWorkspaceFromTarget(creds, targetId)
 }
 
 function extractSpaceViewPointers(entry: SpaceUserEntry, userId: string): SpaceViewPointer[] {

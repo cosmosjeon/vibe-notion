@@ -78,7 +78,7 @@ vibe-notion database query <collection-id> --workspace-id <workspace-id> --prett
 
 Credentials are auto-extracted from the Notion desktop app on first use. No manual setup needed.
 
-> **Important**: `--workspace-id` is required for ALL commands that operate within a specific workspace. Use `vibe-notion workspace list` to find your workspace ID, or `vibe-notion workspace resolve <page_id>` to look up the workspace ID for a page when you only have a Notion URL.
+> **Tip**: `--workspace-id` is now optional for most commands that take a target page/block/database ID. When omitted, it is auto-resolved by probing each authenticated account. The flag is still required for commands without a primary target — `page list`, `database list`, `search`, `user list`, `user get`, `database create --parent` (root-level), `page create` without `--parent`, `batch`, and `comment get` / `comment create --discussion`. Use `vibe-notion workspace list` to find your workspace IDs, or `vibe-notion workspace resolve <page_id_or_url>` to look up the workspace ID directly from a Notion URL.
 
 ## Authentication
 

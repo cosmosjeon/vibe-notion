@@ -159,7 +159,7 @@ vibe-notionbot page get <page-id> --pretty
 | `search` | Workspace search |
 | `comment` | List, create, and get comments (including inline block-level comments) |
 
-> All commands that operate within a workspace require `--workspace-id`. Use `vibe-notion workspace list` to find yours, or `vibe-notion workspace resolve <page_id>` to look up the workspace ID when you only have a Notion URL.
+> `--workspace-id` is optional for most commands that take a target page/block/database ID — it is auto-resolved by probing each authenticated account. It remains required for commands without a primary target (`page list`, `database list`, `search`, `user list`, etc.) and for creating root-level pages. Use `vibe-notion workspace list` to find your workspace IDs, or `vibe-notion workspace resolve <page_id_or_url>` to look up the workspace ID directly from a Notion URL.
 
 ### `vibe-notionbot` (Official API — acts as a bot)
 

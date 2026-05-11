@@ -18,6 +18,7 @@ import { formatOutput } from '@/shared/utils/output'
 
 import {
   type CommandOptions,
+  ensureWorkspaceContext,
   generateId,
   getCredentialsOrExit,
   resolveAndSetActiveUserId,
@@ -25,7 +26,8 @@ import {
   resolveSpaceId,
 } from './helpers'
 
-type WorkspaceOptions = CommandOptions & { workspaceId: string }
+type WorkspaceOptions = CommandOptions & { workspaceId?: string }
+type RequiredWorkspaceOptions = CommandOptions & { workspaceId: string }
 
 type CollectionPropertyType =
   | 'title'
@@ -127,7 +129,7 @@ type QueryOptions = WorkspaceOptions & {
   sort?: string
 }
 
-type ListOptions = WorkspaceOptions
+type ListOptions = RequiredWorkspaceOptions
 
 type CreateOptions = WorkspaceOptions & {
   parent: string
@@ -526,8 +528,9 @@ async function getAction(rawCollectionId: string, options: GetOptions): Promise<
   const collectionId = formatNotionId(rawCollectionId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
-    const collection = await fetchCollection(creds.token_v2, collectionId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
+    const collection = await fetchCollection(ctx.tokenV2, collectionId)
     console.log(formatOutput(formatCollectionValue(collection as Record<string, unknown>), options.pretty))
   } catch (error) {
     handleNotionError(error)
@@ -538,8 +541,9 @@ async function queryAction(rawCollectionId: string, options: QueryOptions): Prom
   const collectionId = formatNotionId(rawCollectionId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
-    const viewId = options.viewId ?? (await resolveCollectionViewId(creds.token_v2, collectionId))
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
+    const viewId = options.viewId ?? (await resolveCollectionViewId(ctx.tokenV2, collectionId))
 
     const loader: Record<string, unknown> = {
       type: 'reducer',
@@ -560,7 +564,7 @@ async function queryAction(rawCollectionId: string, options: QueryOptions): Prom
       loader.sort = JSON.parse(options.sort)
     }
 
-    const response = (await internalRequest(creds.token_v2, 'queryCollection', {
+    const response = (await internalRequest(ctx.tokenV2, 'queryCollection', {
       collectionId,
       collectionViewId: viewId,
       loader,
@@ -570,7 +574,7 @@ async function queryAction(rawCollectionId: string, options: QueryOptions): Prom
     const refs = collectReferenceIds(formatted.results)
 
     if (refs.pageIds.length > 0 || refs.userIds.length > 0) {
-      const batch = (await internalRequest(creds.token_v2, 'syncRecordValues', {
+      const batch = (await internalRequest(ctx.tokenV2, 'syncRecordValues', {
         requests: [
           ...refs.pageIds.map((id) => ({ pointer: { table: 'block', id }, version: -1 })),
           ...refs.userIds.map((id) => ({ pointer: { table: 'notion_user', id }, version: -1 })),
@@ -616,11 +620,12 @@ async function listAction(options: ListOptions): Promise<void> {
 async function createAction(options: CreateOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
-    const result = await handleDatabaseCreate(creds.token_v2, {
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, formatNotionId(options.parent))
+    const result = await handleDatabaseCreate(ctx.tokenV2, {
       parent: options.parent,
       title: options.title,
       properties: options.properties,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -630,12 +635,14 @@ async function createAction(options: CreateOptions): Promise<void> {
 
 async function updateAction(rawCollectionId: string, options: UpdateOptions): Promise<void> {
   try {
+    const collectionId = formatNotionId(rawCollectionId)
     const creds = await getCredentialsOrExit()
-    const result = await handleDatabaseUpdate(creds.token_v2, {
-      database_id: rawCollectionId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    const result = await handleDatabaseUpdate(ctx.tokenV2, {
+      database_id: collectionId,
       title: options.title,
       properties: options.properties,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -645,11 +652,13 @@ async function updateAction(rawCollectionId: string, options: UpdateOptions): Pr
 
 async function deletePropertyAction(rawCollectionId: string, options: DeletePropertyOptions): Promise<void> {
   try {
+    const collectionId = formatNotionId(rawCollectionId)
     const creds = await getCredentialsOrExit()
-    const result = await handleDatabaseDeleteProperty(creds.token_v2, {
-      database_id: rawCollectionId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    const result = await handleDatabaseDeleteProperty(ctx.tokenV2, {
+      database_id: collectionId,
       property: options.property,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -659,12 +668,14 @@ async function deletePropertyAction(rawCollectionId: string, options: DeleteProp
 
 async function addRowAction(rawCollectionId: string, options: AddRowOptions): Promise<void> {
   try {
+    const collectionId = formatNotionId(rawCollectionId)
     const creds = await getCredentialsOrExit()
-    const result = await handleDatabaseAddRow(creds.token_v2, {
-      database_id: rawCollectionId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    const result = await handleDatabaseAddRow(ctx.tokenV2, {
+      database_id: collectionId,
       title: options.title,
       properties: options.properties,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -674,11 +685,13 @@ async function addRowAction(rawCollectionId: string, options: AddRowOptions): Pr
 
 async function updateRowAction(rawRowId: string, options: UpdateRowOptions): Promise<void> {
   try {
+    const rowId = formatNotionId(rawRowId)
     const creds = await getCredentialsOrExit()
-    const result = await handleDatabaseUpdateRow(creds.token_v2, {
-      row_id: rawRowId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, rowId)
+    const result = await handleDatabaseUpdateRow(ctx.tokenV2, {
+      row_id: rowId,
       properties: options.properties,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -788,13 +801,14 @@ async function viewGetAction(rawViewId: string, options: ViewGetOptions): Promis
   const viewId = formatNotionId(rawViewId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, viewId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
-    const view = await fetchView(creds.token_v2, viewId)
+    const view = await fetchView(ctx.tokenV2, viewId)
     const viewType = view.type
     const format = view.format ?? {}
 
-    const collection = await resolveCollectionFromView(creds.token_v2, view)
+    const collection = await resolveCollectionFromView(ctx.tokenV2, view)
     const schema = collection.schema ?? {}
 
     const propsKey = viewPropertiesKey(viewType)
@@ -819,17 +833,18 @@ async function viewUpdateAction(rawViewId: string, options: ViewUpdateOptions): 
   const viewId = formatNotionId(rawViewId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, viewId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
     if (!options.show && !options.hide && !options.reorder && !options.resize) {
       throw new Error('Provide --show, --hide, --reorder, or --resize')
     }
 
-    const view = await fetchView(creds.token_v2, viewId)
+    const view = await fetchView(ctx.tokenV2, viewId)
     const viewType = view.type
     const format = view.format ?? {}
 
-    const collection = await resolveCollectionFromView(creds.token_v2, view)
+    const collection = await resolveCollectionFromView(ctx.tokenV2, view)
     const schema = collection.schema ?? {}
 
     const nameToId: Record<string, string> = {}
@@ -862,7 +877,7 @@ async function viewUpdateAction(rawViewId: string, options: ViewUpdateOptions): 
       throw new Error('Could not determine space ID from view')
     }
 
-    await internalRequest(creds.token_v2, 'saveTransactions', {
+    await internalRequest(ctx.tokenV2, 'saveTransactions', {
       requestId: generateId(),
       transactions: [
         {
@@ -880,7 +895,7 @@ async function viewUpdateAction(rawViewId: string, options: ViewUpdateOptions): 
       ],
     })
 
-    const updatedView = await fetchView(creds.token_v2, viewId)
+    const updatedView = await fetchView(ctx.tokenV2, viewId)
     const updatedFormat = updatedView.format ?? {}
     const finalProps = (updatedFormat[propsKey] ?? []) as ViewProperty[]
 
@@ -1082,9 +1097,10 @@ async function viewListAction(rawCollectionId: string, options: ViewListOptions)
   const collectionId = formatNotionId(rawCollectionId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
-    const block = await resolveCollectionBlock(creds.token_v2, collectionId)
+    const block = await resolveCollectionBlock(ctx.tokenV2, collectionId)
     const viewIds = block.view_ids ?? []
 
     if (viewIds.length === 0) {
@@ -1092,7 +1108,7 @@ async function viewListAction(rawCollectionId: string, options: ViewListOptions)
       return
     }
 
-    const response = (await internalRequest(creds.token_v2, 'syncRecordValues', {
+    const response = (await internalRequest(ctx.tokenV2, 'syncRecordValues', {
       requests: viewIds.map((id) => ({ pointer: { table: 'collection_view', id }, version: -1 })),
     })) as SyncViewResponse
 
@@ -1115,14 +1131,15 @@ async function viewAddAction(rawCollectionId: string, options: ViewAddOptions): 
   const collectionId = formatNotionId(rawCollectionId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, collectionId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
     const viewType = options.type ?? 'table'
     if (!VIEW_TYPES.includes(viewType as (typeof VIEW_TYPES)[number])) {
       throw new Error(`Invalid view type: "${viewType}". Available: ${VIEW_TYPES.join(', ')}`)
     }
 
-    const block = await resolveCollectionBlock(creds.token_v2, collectionId)
+    const block = await resolveCollectionBlock(ctx.tokenV2, collectionId)
     const parentBlockId = block.id
     const spaceId = block.space_id
     if (!spaceId) {
@@ -1132,7 +1149,7 @@ async function viewAddAction(rawCollectionId: string, options: ViewAddOptions): 
     const newViewId = generateId()
     const viewName = options.name ?? `${viewType.charAt(0).toUpperCase()}${viewType.slice(1)} view`
 
-    await internalRequest(creds.token_v2, 'saveTransactions', {
+    await internalRequest(ctx.tokenV2, 'saveTransactions', {
       requestId: generateId(),
       transactions: [
         {
@@ -1164,7 +1181,7 @@ async function viewAddAction(rawCollectionId: string, options: ViewAddOptions): 
       ],
     })
 
-    const created = await fetchView(creds.token_v2, newViewId)
+    const created = await fetchView(ctx.tokenV2, newViewId)
     console.log(
       formatOutput(
         {
@@ -1184,15 +1201,16 @@ async function viewDeleteAction(rawViewId: string, options: ViewDeleteOptions): 
   const viewId = formatNotionId(rawViewId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, viewId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
 
-    const view = await fetchView(creds.token_v2, viewId)
+    const view = await fetchView(ctx.tokenV2, viewId)
     const parentId = view.parent_id
     if (!parentId) {
       throw new Error('Could not determine parent block for view')
     }
 
-    const blockResp = (await internalRequest(creds.token_v2, 'syncRecordValues', {
+    const blockResp = (await internalRequest(ctx.tokenV2, 'syncRecordValues', {
       requests: [{ pointer: { table: 'block', id: parentId }, version: -1 }],
     })) as SyncBlockResponse
 
@@ -1214,7 +1232,7 @@ async function viewDeleteAction(rawViewId: string, options: ViewDeleteOptions): 
       throw new Error('Could not determine space ID from parent block')
     }
 
-    await internalRequest(creds.token_v2, 'saveTransactions', {
+    await internalRequest(ctx.tokenV2, 'saveTransactions', {
       requestId: generateId(),
       transactions: [
         {
@@ -1602,13 +1620,15 @@ export async function handleDatabaseUpdateRow(
   return formatBlockRecord(updatedBlock)
 }
 
+const WORKSPACE_ID_OPTION_DESC = 'Workspace ID (optional; auto-resolved from the target when omitted)'
+
 export const databaseCommand = new Command('database')
   .description('Database commands')
   .addCommand(
     new Command('get')
       .description('Retrieve a database schema')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(getAction),
   )
@@ -1616,7 +1636,7 @@ export const databaseCommand = new Command('database')
     new Command('query')
       .description('Query a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--view-id <id>', 'Collection view ID (auto-resolved if omitted)')
       .option('--limit <n>', 'Results limit')
       .option('--search-query <q>', 'Search within results')
@@ -1636,7 +1656,7 @@ export const databaseCommand = new Command('database')
   .addCommand(
     new Command('create')
       .description('Create a database')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--parent <id>', 'Parent page ID')
       .requiredOption('--title <title>', 'Database title')
       .option('--properties <json>', 'Schema properties as JSON')
@@ -1647,7 +1667,7 @@ export const databaseCommand = new Command('database')
     new Command('update')
       .description('Update a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--title <title>', 'New title')
       .option('--properties <json>', 'Schema properties as JSON')
       .option('--pretty', 'Pretty print JSON output')
@@ -1657,7 +1677,7 @@ export const databaseCommand = new Command('database')
     new Command('delete-property')
       .description('Delete a property from a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--property <name>', 'Property name to delete')
       .option('--pretty', 'Pretty print JSON output')
       .action(deletePropertyAction),
@@ -1666,7 +1686,7 @@ export const databaseCommand = new Command('database')
     new Command('add-row')
       .description('Add a row to a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--title <title>', 'Row title (Name property)')
       .option('--properties <json>', 'Row properties as JSON (use property names from schema)')
       .option('--pretty', 'Pretty print JSON output')
@@ -1676,7 +1696,7 @@ export const databaseCommand = new Command('database')
     new Command('update-row')
       .description('Update properties on an existing database row')
       .argument('<row_id>', 'Row (page) ID to update')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--properties <json>', 'Properties to update as JSON (use property names)')
       .option('--pretty', 'Pretty print JSON output')
       .action(updateRowAction),
@@ -1685,7 +1705,7 @@ export const databaseCommand = new Command('database')
     new Command('view-get')
       .description('Retrieve view configuration and property visibility')
       .argument('<view_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(viewGetAction),
   )
@@ -1693,7 +1713,7 @@ export const databaseCommand = new Command('database')
     new Command('view-update')
       .description('Update property visibility, column order, and column widths on a view')
       .argument('<view_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--show <names>', 'Comma-separated property names to show')
       .option('--hide <names>', 'Comma-separated property names to hide')
       .option('--reorder <names>', 'Comma-separated property names in desired column order')
@@ -1708,7 +1728,7 @@ export const databaseCommand = new Command('database')
     new Command('view-list')
       .description('List all views for a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(viewListAction),
   )
@@ -1716,7 +1736,7 @@ export const databaseCommand = new Command('database')
     new Command('view-add')
       .description('Add a new view to a database')
       .argument('<database_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--type <type>', 'View type (table, board, calendar, list, gallery, timeline)', 'table')
       .option('--name <name>', 'View name')
       .option('--pretty', 'Pretty print JSON output')
@@ -1726,7 +1746,7 @@ export const databaseCommand = new Command('database')
     new Command('view-delete')
       .description('Delete a view from a database')
       .argument('<view_id>')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(viewDeleteAction),
   )
