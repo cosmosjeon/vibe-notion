@@ -390,6 +390,181 @@ describe('WorkspaceCommand', () => {
     expect(result[0].name).toBe('Suyeol')
   })
 
+  test('workspace resolve returns workspace id and name for a page', async () => {
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        const requests = (body as { requests: { pointer: { id: string } }[] }).requests
+        const blockId = requests[0].pointer.id
+        return {
+          recordMap: {
+            block: {
+              [blockId]: {
+                value: { value: { id: blockId, type: 'page', space_id: 'space-1' }, role: 'editor' },
+              },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') {
+        return {
+          'user-1': {
+            space: {
+              'space-1': {
+                value: { value: { id: 'space-1', name: 'Acme' }, role: 'editor' },
+              },
+            },
+          },
+        }
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.page_id).toBe('12345678-1234-1234-1234-123456789012')
+    expect(result.workspace_id).toBe('space-1')
+    expect(result.workspace_name).toBe('Acme')
+  })
+
+  test('workspace resolve probes additional accounts when the first fails', async () => {
+    const mockInternalRequest = mock(async (tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        if (tokenV2 === 'primary-token') {
+          throw new Error('forbidden')
+        }
+        const requests = (body as { requests: { pointer: { id: string } }[] }).requests
+        const blockId = requests[0].pointer.id
+        return {
+          recordMap: {
+            block: {
+              [blockId]: { value: { id: blockId, type: 'page', space_id: 'space-2' } },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') {
+        return {}
+      }
+    })
+
+    const mockGetCredentials = mock(async () => ({
+      token_v2: 'primary-token',
+      accounts: [{ token_v2: 'primary-token' }, { token_v2: 'secondary-token' }],
+    }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.workspace_id).toBe('space-2')
+  })
+
+  test('workspace resolve fails when no account can see the page', async () => {
+    const mockInternalRequest = mock(async () => {
+      throw new Error('forbidden')
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const errorOutput: string[] = []
+    const originalError = console.error
+    console.error = (msg: string) => errorOutput.push(msg)
+
+    let exitCode: number | undefined
+    const originalExit = process.exit
+    process.exit = ((code: number) => {
+      exitCode = code
+    }) as never
+
+    try {
+      await workspaceCommand.parseAsync(['resolve', '12345678-1234-1234-1234-123456789012'], { from: 'user' })
+    } catch {
+      // Expected
+    }
+
+    console.error = originalError
+    process.exit = originalExit
+
+    expect(errorOutput.length).toBeGreaterThan(0)
+    const errorMsg = JSON.parse(errorOutput[0])
+    expect(errorMsg.error).toContain('Could not resolve workspace')
+    expect(exitCode).toBe(1)
+  })
+
   test('workspace list handles errors', async () => {
     const mockInternalRequest = mock(async () => {
       throw new Error('API error')

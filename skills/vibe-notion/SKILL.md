@@ -78,7 +78,7 @@ vibe-notion database query <collection-id> --workspace-id <workspace-id> --prett
 
 Credentials are auto-extracted from the Notion desktop app on first use. No manual setup needed.
 
-> **Important**: `--workspace-id` is required for ALL commands that operate within a specific workspace. Use `vibe-notion workspace list` to find your workspace ID.
+> **Important**: `--workspace-id` is required for ALL commands that operate within a specific workspace. Use `vibe-notion workspace list` to find your workspace ID, or `vibe-notion workspace resolve <page_id>` to look up the workspace ID for a page when you only have a Notion URL.
 
 ## Authentication
 
@@ -406,6 +406,20 @@ vibe-notion search "query" --workspace-id <workspace_id> --limit 10 --pretty
 vibe-notion search "query" --workspace-id <workspace_id> --start-cursor <offset> --pretty
 vibe-notion search "query" --workspace-id <workspace_id> --sort lastEdited --pretty
 ```
+
+### Workspace Commands
+
+```bash
+# List all workspaces accessible to the current user (members and guests)
+vibe-notion workspace list --pretty
+
+# Resolve the workspace ID that owns a page or block.
+# Useful when you only have a Notion URL (which doesn't include workspace info)
+# and need to find the --workspace-id to use for other commands.
+vibe-notion workspace resolve <page_id> --pretty
+```
+
+> **Tip**: `block get`, `page get`, `page create`, and `page update` outputs now include a `space_id` field, which is the workspace ID that owns the page or block. Use this to discover the right `--workspace-id` for subsequent operations.
 
 ### User Commands
 

@@ -3,6 +3,7 @@ import { Command } from 'commander'
 import { internalRequest } from '@/platforms/notion/client'
 import type { NotionCredentials } from '@/platforms/notion/credential-manager'
 import { handleNotionError } from '@/shared/utils/error-handler'
+import { formatNotionId } from '@/shared/utils/id'
 import { formatOutput } from '@/shared/utils/output'
 
 import { type CommandOptions, getCredentialsOrExit } from './helpers'
@@ -90,6 +91,92 @@ async function getSpacesResponses(creds: NotionCredentials): Promise<GetSpacesRe
   return responses
 }
 
+type SyncRecordValuesResponse = {
+  recordMap?: {
+    block?: Record<string, Record<string, unknown>>
+  }
+}
+
+function extractSpaceIdFromBlockRecord(record: Record<string, unknown> | undefined): string | undefined {
+  if (!record) return undefined
+  const outer = record.value as Record<string, unknown> | undefined
+  const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+  const innerSpaceId = typeof inner?.space_id === 'string' ? (inner.space_id as string) : undefined
+  const topSpaceId = typeof record.spaceId === 'string' ? (record.spaceId as string) : undefined
+  return innerSpaceId ?? topSpaceId
+}
+
+async function resolveSpaceIdForToken(token: string, blockId: string): Promise<string | undefined> {
+  try {
+    const result = (await internalRequest(token, 'syncRecordValues', {
+      requests: [{ pointer: { table: 'block', id: blockId }, version: -1 }],
+    })) as SyncRecordValuesResponse
+    const blockMap = result.recordMap?.block
+    if (!blockMap) return undefined
+    const direct = blockMap[blockId]
+    if (direct) {
+      const spaceId = extractSpaceIdFromBlockRecord(direct)
+      if (spaceId) return spaceId
+    }
+    for (const record of Object.values(blockMap)) {
+      const spaceId = extractSpaceIdFromBlockRecord(record)
+      if (spaceId) return spaceId
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function lookupWorkspaceName(token: string, workspaceId: string): Promise<string | undefined> {
+  try {
+    const response = (await internalRequest(token, 'getSpaces', {})) as GetSpacesResponse
+    for (const entry of Object.values(response)) {
+      for (const record of Object.values(entry.space ?? {})) {
+        const space = extractSpaceValue(record)
+        if (space?.id === workspaceId) {
+          return space.name
+        }
+      }
+    }
+  } catch {}
+  return undefined
+}
+
+async function resolveAction(rawPageId: string, options: CommandOptions): Promise<void> {
+  const pageId = formatNotionId(rawPageId)
+  try {
+    const creds = await getCredentialsOrExit()
+    const tokens = getAccountTokens(creds)
+
+    let workspaceId: string | undefined
+    let matchedToken: string | undefined
+    for (const token of tokens) {
+      const spaceId = await resolveSpaceIdForToken(token, pageId)
+      if (spaceId) {
+        workspaceId = spaceId
+        matchedToken = token
+        break
+      }
+    }
+
+    if (!workspaceId || !matchedToken) {
+      throw new Error(`Could not resolve workspace for page: ${pageId}`)
+    }
+
+    const name = await lookupWorkspaceName(matchedToken, workspaceId)
+    const output = {
+      page_id: pageId,
+      workspace_id: workspaceId,
+      ...(name ? { workspace_name: name } : {}),
+    }
+
+    console.log(formatOutput(output, options.pretty))
+  } catch (error) {
+    handleNotionError(error)
+  }
+}
+
 async function listAction(options: CommandOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
@@ -143,4 +230,11 @@ export const workspaceCommand = new Command('workspace')
       .description('List workspaces accessible to current user')
       .option('--pretty', 'Pretty print JSON output')
       .action(listAction),
+  )
+  .addCommand(
+    new Command('resolve')
+      .description('Resolve the workspace ID that owns a given page or block')
+      .argument('<page_id>', 'Page or block ID')
+      .option('--pretty', 'Pretty print JSON output')
+      .action(resolveAction),
   )

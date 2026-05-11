@@ -85,6 +85,7 @@ export function formatBlockValue(
   cells?: string[]
   content: string[] | undefined
   parent_id: string | undefined
+  space_id?: string
   collection_id?: string
   view_ids?: string[]
   table_column_order?: string[]
@@ -94,6 +95,7 @@ export function formatBlockValue(
   const isCollection = type === 'collection_view' || type === 'collection_view_page'
   const viewIds = isCollection ? toStringArray(block.view_ids) : []
   const collectionId = isCollection ? toOptionalString(block.collection_id) : undefined
+  const spaceId = toOptionalString(block.space_id)
 
   const columnOrder = type === 'table' ? extractTableColumnOrder(block) : []
   const rowColumnOrder =
@@ -112,6 +114,7 @@ export function formatBlockValue(
     ...(cells && cells.some(Boolean) ? { cells } : {}),
     content: content.length > 0 ? content : undefined,
     parent_id: toOptionalString(block.parent_id),
+    ...(spaceId ? { space_id: spaceId } : {}),
     ...(collectionId ? { collection_id: collectionId } : {}),
     ...(viewIds.length > 0 ? { view_ids: viewIds } : {}),
     ...(columnOrder.length > 0 ? { table_column_order: columnOrder } : {}),
@@ -165,20 +168,24 @@ export function formatPageGet(
 ): {
   id: string
   title: string
+  space_id?: string
   properties?: Record<string, PropertyValue>
   blocks: SimplifiedBlock[]
 } {
   const root = getRecordValue(blocks[pageId])
   const content = toStringArray(root?.content)
+  const spaceId = root ? toOptionalString(root.space_id) : undefined
 
   const result: {
     id: string
     title: string
+    space_id?: string
     properties?: Record<string, PropertyValue>
     blocks: SimplifiedBlock[]
   } = {
     id: pageId,
     title: root ? extractNotionTitle(root) : '',
+    ...(spaceId ? { space_id: spaceId } : {}),
     blocks: buildPageChildren(blocks, content),
   }
 
@@ -293,13 +300,16 @@ export function formatBlockRecord(record: Record<string, unknown>): {
   id: string
   title: string
   type: string
+  space_id?: string
 } {
   const value = getRecordValue(record) ?? {}
+  const spaceId = toOptionalString(value.space_id)
 
   return {
     id: toStringValue(value.id),
     title: extractNotionTitle(value),
     type: toStringValue(value.type),
+    ...(spaceId ? { space_id: spaceId } : {}),
   }
 }
 
