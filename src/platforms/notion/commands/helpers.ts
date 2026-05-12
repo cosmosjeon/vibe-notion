@@ -6,6 +6,7 @@ import { CredentialManager, type NotionCredentials } from '@/platforms/notion/cr
 import { validateCandidates, withStoredAccounts } from '@/platforms/notion/extracted-token-validation'
 import { collectBacklinkUserIds, getRecordValue } from '@/platforms/notion/formatters'
 import { TokenExtractor } from '@/platforms/notion/token-extractor'
+import { formatNotionId } from '@/shared/utils/id'
 
 export type CommandOptions = { pretty?: boolean }
 
@@ -119,6 +120,83 @@ export async function resolveSpaceId(tokenV2: string, blockId: string): Promise<
     throw new Error(`Could not resolve space ID for block: ${blockId}`)
   }
   return spaceId
+}
+
+export function getAccountTokens(creds: NotionCredentials): Array<{ token_v2: string; user_id?: string }> {
+  const tokens: Array<{ token_v2: string; user_id?: string }> = [{ token_v2: creds.token_v2, user_id: creds.user_id }]
+
+  for (const account of creds.accounts ?? []) {
+    if (tokens.some((t) => t.token_v2 === account.token_v2)) continue
+    tokens.push({ token_v2: account.token_v2, user_id: account.user_id })
+  }
+
+  return tokens
+}
+
+// Targets the agent may hand us span across multiple Notion record tables:
+// pages and blocks live in `block`, databases in `collection`, view IDs in
+// `collection_view`. Probing all three in one request keeps auto-resolve
+// correct without paying for three sequential round-trips.
+const SPACE_ID_PROBE_TABLES = ['block', 'collection', 'collection_view'] as const
+
+type ProbeOutcome = { spaceId?: string; error?: Error }
+
+async function probeSpaceIdForToken(tokenV2: string, targetId: string): Promise<ProbeOutcome> {
+  try {
+    const result = (await internalRequest(tokenV2, 'syncRecordValues', {
+      requests: SPACE_ID_PROBE_TABLES.map((table) => ({ pointer: { table, id: targetId }, version: -1 })),
+    })) as { recordMap?: Record<string, Record<string, Record<string, unknown>> | undefined> }
+
+    for (const table of SPACE_ID_PROBE_TABLES) {
+      const records = result.recordMap?.[table]
+      if (!records) continue
+      const matched = records[targetId] ?? Object.values(records)[0]
+      const outer = matched?.value as Record<string, unknown> | undefined
+      const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+      const spaceId =
+        (inner?.space_id as string) ?? ((matched as Record<string, unknown> | undefined)?.spaceId as string)
+      if (spaceId) return { spaceId }
+    }
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
+  }
+}
+
+export type ResolvedWorkspaceContext = {
+  workspaceId: string
+  tokenV2: string
+  userId?: string
+}
+
+export async function resolveWorkspaceFromTarget(
+  creds: NotionCredentials,
+  targetId: string,
+): Promise<ResolvedWorkspaceContext> {
+  const normalizedId = formatNotionId(targetId)
+  let lastError: Error | undefined
+  for (const account of getAccountTokens(creds)) {
+    const { spaceId, error } = await probeSpaceIdForToken(account.token_v2, normalizedId)
+    if (spaceId) {
+      return { workspaceId: spaceId, tokenV2: account.token_v2, userId: account.user_id }
+    }
+    if (error) lastError = error
+  }
+  const suffix = lastError ? ` Last error: ${lastError.message}` : ''
+  throw new Error(
+    `Could not auto-resolve --workspace-id for ${targetId}. Pass --workspace-id explicitly or run 'vibe-notion workspace resolve ${targetId}' to inspect.${suffix}`,
+  )
+}
+
+export async function ensureWorkspaceContext(
+  creds: NotionCredentials,
+  workspaceId: string | undefined,
+  targetId: string,
+): Promise<ResolvedWorkspaceContext> {
+  if (workspaceId) {
+    return { workspaceId, tokenV2: creds.token_v2, userId: creds.user_id }
+  }
+  return resolveWorkspaceFromTarget(creds, targetId)
 }
 
 function extractSpaceViewPointers(entry: SpaceUserEntry, userId: string): SpaceViewPointer[] {

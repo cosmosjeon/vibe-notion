@@ -8,6 +8,7 @@ import { formatOutput } from '@/shared/utils/output'
 
 import {
   type CommandOptions,
+  ensureWorkspaceContext,
   generateId,
   getCredentialsOrExit,
   resolveAndSetActiveUserId,
@@ -34,17 +35,17 @@ function getRecordValue(record: Record<string, unknown> | undefined): Record<str
 type ListOptions = CommandOptions & {
   page: string
   block?: string
-  workspaceId: string
+  workspaceId?: string
 }
 
 type CreateOptions = CommandOptions & {
   page?: string
   discussion?: string
-  workspaceId: string
+  workspaceId?: string
 }
 
 type GetOptions = CommandOptions & {
-  workspaceId: string
+  workspaceId?: string
 }
 
 type LoadPageChunkResponse = {
@@ -81,10 +82,11 @@ type SaveTransactionsRequest = {
 async function listAction(options: ListOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
-
     const pageId = formatNotionId(options.page)
-    const response = (await internalRequest(creds.token_v2, 'loadPageChunk', {
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, pageId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
+
+    const response = (await internalRequest(ctx.tokenV2, 'loadPageChunk', {
       pageId,
       limit: 100,
       cursor: { stack: [] },
@@ -261,11 +263,22 @@ export async function handleCommentCreate(
 async function createAction(text: string, options: CreateOptions): Promise<void> {
   try {
     const creds = await getCredentialsOrExit()
-    const result = await handleCommentCreate(creds.token_v2, {
+    let workspaceId = options.workspaceId
+    let tokenV2 = creds.token_v2
+    if (options.page) {
+      const ctx = await ensureWorkspaceContext(creds, workspaceId, formatNotionId(options.page))
+      workspaceId = ctx.workspaceId
+      tokenV2 = ctx.tokenV2
+    } else if (!workspaceId) {
+      throw new Error(
+        'Replying to a discussion requires --workspace-id. Use `vibe-notion workspace resolve <page_id>` if needed.',
+      )
+    }
+    const result = await handleCommentCreate(tokenV2, {
       text,
       page: options.page,
       discussion: options.discussion,
-      workspaceId: options.workspaceId,
+      workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -275,10 +288,15 @@ async function createAction(text: string, options: CreateOptions): Promise<void>
 
 async function getAction(commentId: string, options: GetOptions): Promise<void> {
   try {
+    if (!options.workspaceId) {
+      throw new Error(
+        'comment get requires --workspace-id. Use `vibe-notion workspace resolve <page_id>` on the parent page to look it up.',
+      )
+    }
     const creds = await getCredentialsOrExit()
+    const formattedCommentId = formatNotionId(commentId)
     await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
 
-    const formattedCommentId = formatNotionId(commentId)
     const response = (await internalRequest(creds.token_v2, 'syncRecordValues', {
       requests: [{ pointer: { table: 'comment', id: formattedCommentId }, version: -1 }],
     })) as SyncRecordValuesResponse
@@ -308,6 +326,8 @@ async function getAction(commentId: string, options: GetOptions): Promise<void> 
   }
 }
 
+const WORKSPACE_ID_OPTION_DESC = 'Workspace ID (optional; auto-resolved from --page when provided)'
+
 export const commentCommand = new Command('comment')
   .description('Comment commands')
   .addCommand(
@@ -315,7 +335,7 @@ export const commentCommand = new Command('comment')
       .description('List comments on a page or block')
       .requiredOption('--page <page_id>', 'Page ID')
       .option('--block <block_id>', 'Block ID (filter to inline comments on this block)')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(listAction),
   )
@@ -325,7 +345,10 @@ export const commentCommand = new Command('comment')
       .argument('<text>', 'Comment text')
       .option('--page <page_id>', 'Page ID (for new discussion)')
       .option('--discussion <discussion_id>', 'Discussion ID (for reply)')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option(
+        '--workspace-id <id>',
+        'Workspace ID (auto-resolved from --page when provided; required for --discussion)',
+      )
       .option('--pretty', 'Pretty print JSON output')
       .action(createAction),
   )

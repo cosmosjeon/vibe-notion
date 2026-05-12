@@ -8,13 +8,14 @@ import { formatOutput } from '@/shared/utils/output'
 
 import {
   type CommandOptions,
+  ensureWorkspaceContext,
   generateId,
   getCredentialsOrExit,
   resolveAndSetActiveUserId,
   resolveSpaceId,
 } from './helpers'
 
-type WorkspaceOptions = CommandOptions & { workspaceId: string }
+type WorkspaceOptions = CommandOptions & { workspaceId?: string }
 
 type BlockValue = {
   id: string
@@ -404,16 +405,18 @@ export async function handleTableDeleteRow(
 
 async function createAction(rawParentId: string, options: CreateOptions): Promise<void> {
   try {
+    const parentId = formatNotionId(rawParentId)
     const creds = await getCredentialsOrExit()
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, parentId)
     const headers = parseCsvCells(options.headers)
     const rows = options.rows ? parseRowsJson(options.rows) : []
-    const result = await handleTableCreate(creds.token_v2, {
-      parent_id: formatNotionId(rawParentId),
+    const result = await handleTableCreate(ctx.tokenV2, {
+      parent_id: parentId,
       headers,
       rows,
       after: options.after,
       before: options.before,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -423,12 +426,14 @@ async function createAction(rawParentId: string, options: CreateOptions): Promis
 
 async function addRowAction(rawTableId: string, options: AddRowOptions): Promise<void> {
   try {
+    const tableId = formatNotionId(rawTableId)
     const creds = await getCredentialsOrExit()
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, tableId)
     const cells = parseCsvCells(options.cells)
-    const result = await handleTableAddRow(creds.token_v2, {
-      table_id: formatNotionId(rawTableId),
+    const result = await handleTableAddRow(ctx.tokenV2, {
+      table_id: tableId,
       cells,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -438,15 +443,17 @@ async function addRowAction(rawTableId: string, options: AddRowOptions): Promise
 
 async function updateCellAction(rawTableId: string, options: UpdateCellOptions): Promise<void> {
   try {
+    const tableId = formatNotionId(rawTableId)
     const creds = await getCredentialsOrExit()
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, tableId)
     const row = parseIndex(options.row, 'row')
     const col = parseIndex(options.col, 'col')
-    const result = await handleTableUpdateCell(creds.token_v2, {
-      table_id: formatNotionId(rawTableId),
+    const result = await handleTableUpdateCell(ctx.tokenV2, {
+      table_id: tableId,
       row,
       col,
       value: options.value,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -456,12 +463,14 @@ async function updateCellAction(rawTableId: string, options: UpdateCellOptions):
 
 async function deleteRowAction(rawTableId: string, options: DeleteRowOptions): Promise<void> {
   try {
+    const tableId = formatNotionId(rawTableId)
     const creds = await getCredentialsOrExit()
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, tableId)
     const row = parseIndex(options.row, 'row')
-    const result = await handleTableDeleteRow(creds.token_v2, {
-      table_id: formatNotionId(rawTableId),
+    const result = await handleTableDeleteRow(ctx.tokenV2, {
+      table_id: tableId,
       row,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -469,13 +478,15 @@ async function deleteRowAction(rawTableId: string, options: DeleteRowOptions): P
   }
 }
 
+const WORKSPACE_ID_OPTION_DESC = 'Workspace ID (optional; auto-resolved from the target when omitted)'
+
 export const tableCommand = new Command('table')
   .description('Simple table commands (non-database tables)')
   .addCommand(
     new Command('create')
       .description('Create a simple table')
       .argument('<parent_id>', 'Parent page or block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--headers <csv>', 'Comma-separated column headers (e.g. "Name,Role,Score")')
       .option(
         '--rows <json>',
@@ -490,7 +501,7 @@ export const tableCommand = new Command('table')
     new Command('add-row')
       .description('Add a row to a simple table')
       .argument('<table_id>', 'Table block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--cells <csv>', 'Comma-separated cell values')
       .option('--pretty', 'Pretty print JSON output')
       .action(addRowAction),
@@ -499,7 +510,7 @@ export const tableCommand = new Command('table')
     new Command('update-cell')
       .description('Update a single cell in a simple table')
       .argument('<table_id>', 'Table block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--row <index>', 'Row index (0-based, excluding header row)')
       .requiredOption('--col <index>', 'Column index (0-based)')
       .requiredOption('--value <text>', 'New cell value')
@@ -510,7 +521,7 @@ export const tableCommand = new Command('table')
     new Command('delete-row')
       .description('Delete a row from a simple table')
       .argument('<table_id>', 'Table block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--row <index>', 'Row index (0-based, excluding header row)')
       .option('--pretty', 'Pretty print JSON output')
       .action(deleteRowAction),

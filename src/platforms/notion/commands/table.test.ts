@@ -21,6 +21,15 @@ function setupMocks(overrides: {
     resolveAndSetActiveUserId: mock(() => Promise.resolve()),
     resolveBacklinkUsers: mock(async () => ({})),
     resolveDefaultTeamId: mock(async () => undefined),
+    ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+      workspaceId: workspaceId ?? 'space-mock',
+      tokenV2: (creds && creds.token_v2) || 'test-token',
+      userId: creds && creds.user_id,
+    })),
+    resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+    getAccountTokens: mock((creds) => [
+      { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+    ]),
   }))
 
   return { mockInternalRequest, mockGetCredentials, mockResolveSpaceId, mockGenerateId }

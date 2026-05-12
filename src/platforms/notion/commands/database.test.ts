@@ -37,6 +37,15 @@ describe('database get', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -91,6 +100,15 @@ describe('database get', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -180,6 +198,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -273,6 +300,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -394,6 +430,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -494,6 +539,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -582,6 +636,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -672,6 +735,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -752,6 +824,15 @@ describe('database query', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -816,6 +897,15 @@ describe('database list', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -895,6 +985,15 @@ describe('database create', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1011,6 +1110,15 @@ describe('database create', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1159,6 +1267,15 @@ describe('database create', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1275,6 +1392,15 @@ describe('database update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1370,6 +1496,15 @@ describe('database update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1471,6 +1606,15 @@ describe('database update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1538,6 +1682,15 @@ describe('database update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1629,6 +1782,15 @@ describe('database add-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1743,6 +1905,15 @@ describe('database add-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1855,6 +2026,15 @@ describe('database add-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -1961,6 +2141,15 @@ describe('database add-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2089,6 +2278,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2190,6 +2388,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2288,6 +2495,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2390,6 +2606,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2495,6 +2720,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2595,6 +2829,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -2685,6 +2928,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -2762,6 +3014,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -2855,6 +3116,15 @@ describe('database update-row', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -2954,6 +3224,15 @@ describe('database delete-property', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3031,6 +3310,15 @@ describe('database delete-property', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -3100,6 +3388,15 @@ describe('database delete-property', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -3193,6 +3490,15 @@ describe('database delete-property', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3291,6 +3597,15 @@ describe('database delete-property', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3394,6 +3709,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3494,6 +3818,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3591,6 +3924,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3692,6 +4034,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -3791,6 +4142,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3889,6 +4249,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -3988,6 +4357,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const originalExit = process.exit
@@ -4087,6 +4465,15 @@ describe('database view-update', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4208,6 +4595,15 @@ describe('database view-list', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4293,6 +4689,15 @@ describe('database view-list', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4390,6 +4795,15 @@ describe('database view-add', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4502,6 +4916,15 @@ describe('database view-add', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4579,6 +5002,15 @@ describe('database view-add', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const mockExit = mock(() => {
@@ -4670,6 +5102,15 @@ describe('database view-delete', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')
@@ -4761,6 +5202,15 @@ describe('database view-delete', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const mockExit = mock(() => {
@@ -4832,6 +5282,15 @@ describe('database get with v3 nested format', () => {
       resolveAndSetActiveUserId: mock(async () => {}),
       resolveBacklinkUsers: mock(async () => ({})),
       resolveDefaultTeamId: mock(async () => undefined),
+      ensureWorkspaceContext: mock(async (creds, workspaceId) => ({
+        workspaceId: workspaceId ?? 'space-mock',
+        tokenV2: (creds && creds.token_v2) || 'test-token',
+        userId: creds && creds.user_id,
+      })),
+      resolveWorkspaceFromTarget: mock(async () => ({ workspaceId: 'space-mock', tokenV2: 'test-token' })),
+      getAccountTokens: mock((creds) => [
+        { token_v2: (creds && creds.token_v2) || 'test-token', user_id: creds && creds.user_id },
+      ]),
     }))
 
     const { databaseCommand } = await import('./database')

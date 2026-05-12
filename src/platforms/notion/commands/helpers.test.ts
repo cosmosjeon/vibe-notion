@@ -1049,3 +1049,171 @@ describe('resolveBacklinkUsers', () => {
     expect(result).toEqual({ 'user-1': 'Alice' })
   })
 })
+
+type CredentialsLike = { token_v2: string; user_id?: string; accounts?: Array<{ token_v2: string; user_id?: string }> }
+
+function getAccountTokensImpl(creds: CredentialsLike): Array<{ token_v2: string; user_id?: string }> {
+  const tokens: Array<{ token_v2: string; user_id?: string }> = [{ token_v2: creds.token_v2, user_id: creds.user_id }]
+  for (const account of creds.accounts ?? []) {
+    if (tokens.some((t) => t.token_v2 === account.token_v2)) continue
+    tokens.push({ token_v2: account.token_v2, user_id: account.user_id })
+  }
+  return tokens
+}
+
+const PROBE_TABLES = ['block', 'collection', 'collection_view'] as const
+
+async function probeSpaceIdForTokenImpl(
+  tokenV2: string,
+  targetId: string,
+): Promise<{ spaceId?: string; error?: Error }> {
+  try {
+    const result = (await _mockInternalRequest(tokenV2, 'syncRecordValues', {
+      requests: PROBE_TABLES.map((table) => ({ pointer: { table, id: targetId }, version: -1 })),
+    })) as { recordMap?: Record<string, Record<string, Record<string, unknown>> | undefined> }
+
+    for (const table of PROBE_TABLES) {
+      const records = result.recordMap?.[table]
+      if (!records) continue
+      const matched = records[targetId] ?? Object.values(records)[0]
+      const outer = matched?.value as Record<string, unknown> | undefined
+      const inner = typeof outer?.role === 'string' ? (outer.value as Record<string, unknown>) : outer
+      const spaceId =
+        (inner?.space_id as string) ?? ((matched as Record<string, unknown> | undefined)?.spaceId as string)
+      if (spaceId) return { spaceId }
+    }
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error : new Error(String(error)) }
+  }
+}
+
+async function resolveWorkspaceFromTargetImpl(
+  creds: CredentialsLike,
+  targetId: string,
+): Promise<{ workspaceId: string; tokenV2: string; userId?: string }> {
+  let lastError: Error | undefined
+  for (const account of getAccountTokensImpl(creds)) {
+    const { spaceId, error } = await probeSpaceIdForTokenImpl(account.token_v2, targetId)
+    if (spaceId) {
+      return { workspaceId: spaceId, tokenV2: account.token_v2, userId: account.user_id }
+    }
+    if (error) lastError = error
+  }
+  const suffix = lastError ? ` Last error: ${lastError.message}` : ''
+  throw new Error(`Could not auto-resolve --workspace-id for ${targetId}.${suffix}`)
+}
+
+async function ensureWorkspaceContextImpl(
+  creds: CredentialsLike,
+  workspaceId: string | undefined,
+  targetId: string,
+): Promise<{ workspaceId: string; tokenV2: string; userId?: string }> {
+  if (workspaceId) {
+    return { workspaceId, tokenV2: creds.token_v2, userId: creds.user_id }
+  }
+  return resolveWorkspaceFromTargetImpl(creds, targetId)
+}
+
+describe('getAccountTokens', () => {
+  test('returns the primary token first', () => {
+    const result = getAccountTokensImpl({ token_v2: 'primary', user_id: 'user-1' })
+    expect(result).toEqual([{ token_v2: 'primary', user_id: 'user-1' }])
+  })
+
+  test('appends additional accounts and deduplicates by token', () => {
+    const result = getAccountTokensImpl({
+      token_v2: 'primary',
+      user_id: 'user-1',
+      accounts: [
+        { token_v2: 'primary', user_id: 'user-1' },
+        { token_v2: 'secondary', user_id: 'user-2' },
+      ],
+    })
+    expect(result).toEqual([
+      { token_v2: 'primary', user_id: 'user-1' },
+      { token_v2: 'secondary', user_id: 'user-2' },
+    ])
+  })
+})
+
+describe('resolveWorkspaceFromTarget', () => {
+  test('returns workspaceId and tokenV2 from the first account that can see the target', async () => {
+    _mockInternalRequest = (tokenV2: unknown) => {
+      if (tokenV2 === 'primary') {
+        return Promise.reject(new Error('not found'))
+      }
+      return Promise.resolve({
+        recordMap: { block: { 'block-1': { value: { space_id: 'space-abc' } } } },
+      })
+    }
+    const result = await resolveWorkspaceFromTargetImpl(
+      { token_v2: 'primary', accounts: [{ token_v2: 'primary' }, { token_v2: 'secondary' }] },
+      'block-1',
+    )
+    expect(result).toEqual({ workspaceId: 'space-abc', tokenV2: 'secondary', userId: undefined })
+  })
+
+  test('resolves from the collection table when the target is a database id', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: { collection: { 'coll-1': { value: { space_id: 'space-from-coll' } } } },
+      })
+    const result = await resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'coll-1')
+    expect(result.workspaceId).toBe('space-from-coll')
+  })
+
+  test('resolves from the collection_view table when the target is a view id', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: {
+          collection_view: {
+            'view-1': { value: { value: { space_id: 'space-from-view' }, role: 'editor' } },
+          },
+        },
+      })
+    const result = await resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'view-1')
+    expect(result.workspaceId).toBe('space-from-view')
+  })
+
+  test('throws when no account can resolve the target', async () => {
+    _mockInternalRequest = () => Promise.resolve({ recordMap: {} })
+    await expect(resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'unknown-id')).rejects.toThrow(
+      'Could not auto-resolve --workspace-id for unknown-id.',
+    )
+  })
+
+  test('includes the last underlying error in the failure message', async () => {
+    _mockInternalRequest = () => Promise.reject(new Error('Notion internal API error: 401: token expired'))
+    await expect(resolveWorkspaceFromTargetImpl({ token_v2: 'primary' }, 'block-1')).rejects.toThrow(
+      'Last error: Notion internal API error: 401: token expired',
+    )
+  })
+})
+
+describe('ensureWorkspaceContext', () => {
+  test('returns the explicit workspaceId without calling the API when provided', async () => {
+    let called = false
+    _mockInternalRequest = () => {
+      called = true
+      return Promise.resolve({})
+    }
+    const result = await ensureWorkspaceContextImpl(
+      { token_v2: 'primary', user_id: 'user-1' },
+      'ws-explicit',
+      'block-1',
+    )
+    expect(called).toBe(false)
+    expect(result).toEqual({ workspaceId: 'ws-explicit', tokenV2: 'primary', userId: 'user-1' })
+  })
+
+  test('falls back to auto-resolve when workspaceId is omitted', async () => {
+    _mockInternalRequest = () =>
+      Promise.resolve({
+        recordMap: { block: { 'block-1': { value: { space_id: 'space-resolved' } } } },
+      })
+    const result = await ensureWorkspaceContextImpl({ token_v2: 'primary' }, undefined, 'block-1')
+    expect(result.workspaceId).toBe('space-resolved')
+    expect(result.tokenV2).toBe('primary')
+  })
+})

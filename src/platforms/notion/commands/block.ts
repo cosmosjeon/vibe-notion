@@ -20,6 +20,7 @@ import { formatOutput } from '@/shared/utils/output'
 
 import {
   type CommandOptions,
+  ensureWorkspaceContext,
   generateId,
   getCredentialsOrExit,
   resolveAndSetActiveUserId,
@@ -27,7 +28,7 @@ import {
   resolveSpaceId,
 } from './helpers'
 
-type WorkspaceOptions = CommandOptions & { workspaceId: string }
+type WorkspaceOptions = CommandOptions & { workspaceId?: string }
 
 type BlockValue = {
   id: string
@@ -201,8 +202,9 @@ async function getAction(rawBlockId: string, options: BlockGetOptions): Promise<
   const blockId = formatNotionId(rawBlockId)
   try {
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
-    const response = (await internalRequest(creds.token_v2, 'syncRecordValues', {
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, blockId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
+    const response = (await internalRequest(ctx.tokenV2, 'syncRecordValues', {
       requests: [{ pointer: { table: 'block', id: blockId }, version: -1 }],
     })) as SyncRecordValuesResponse
 
@@ -210,7 +212,7 @@ async function getAction(rawBlockId: string, options: BlockGetOptions): Promise<
 
     let tableColumnOrder: string[] | undefined
     if (block.type === 'table_row' && block.parent_id) {
-      const parentResponse = (await internalRequest(creds.token_v2, 'syncRecordValues', {
+      const parentResponse = (await internalRequest(ctx.tokenV2, 'syncRecordValues', {
         requests: [{ pointer: { table: 'block', id: block.parent_id }, version: -1 }],
       })) as SyncRecordValuesResponse
       const parent = getBlockById(parentResponse.recordMap.block, block.parent_id)
@@ -222,10 +224,10 @@ async function getAction(rawBlockId: string, options: BlockGetOptions): Promise<
     const result = formatBlockValue(block as Record<string, unknown>, tableColumnOrder)
 
     if (options.backlinks) {
-      const backlinksResponse = (await internalRequest(creds.token_v2, 'getBacklinksForBlock', {
+      const backlinksResponse = (await internalRequest(ctx.tokenV2, 'getBacklinksForBlock', {
         blockId,
       })) as Record<string, unknown>
-      const userLookup = await resolveBacklinkUsers(creds.token_v2, backlinksResponse)
+      const userLookup = await resolveBacklinkUsers(ctx.tokenV2, backlinksResponse)
       const output = { ...result, backlinks: formatBacklinks(backlinksResponse, userLookup) }
       console.log(formatOutput(output, options.pretty))
     } else {
@@ -241,8 +243,9 @@ async function childrenAction(rawBlockId: string, options: ChildListOptions): Pr
   try {
     const cursor = parsePageChunkCursor(options.startCursor)
     const creds = await getCredentialsOrExit()
-    await resolveAndSetActiveUserId(creds.token_v2, options.workspaceId)
-    const response = (await internalRequest(creds.token_v2, 'loadPageChunk', {
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, blockId)
+    await resolveAndSetActiveUserId(ctx.tokenV2, ctx.workspaceId)
+    const response = (await internalRequest(ctx.tokenV2, 'loadPageChunk', {
       pageId: blockId,
       limit: options.limit ? Number(options.limit) : 100,
       cursor,
@@ -571,15 +574,17 @@ export async function handleBlockMove(
 
 async function appendAction(rawParentId: string, options: AppendOptions): Promise<void> {
   try {
+    const parentId = formatNotionId(rawParentId)
     const creds = await getCredentialsOrExit()
-    const result = await handleBlockAppend(creds.token_v2, {
-      parent_id: formatNotionId(rawParentId),
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, parentId)
+    const result = await handleBlockAppend(ctx.tokenV2, {
+      parent_id: parentId,
       content: options.content,
       markdown: options.markdown,
       markdownFile: options.markdownFile,
       after: options.after,
       before: options.before,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -589,11 +594,13 @@ async function appendAction(rawParentId: string, options: AppendOptions): Promis
 
 async function updateAction(rawBlockId: string, options: UpdateOptions): Promise<void> {
   try {
+    const blockId = formatNotionId(rawBlockId)
     const creds = await getCredentialsOrExit()
-    const result = await handleBlockUpdate(creds.token_v2, {
-      block_id: formatNotionId(rawBlockId),
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, blockId)
+    const result = await handleBlockUpdate(ctx.tokenV2, {
+      block_id: blockId,
       content: options.content,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -603,10 +610,12 @@ async function updateAction(rawBlockId: string, options: UpdateOptions): Promise
 
 async function deleteAction(rawBlockId: string, options: WorkspaceOptions): Promise<void> {
   try {
+    const blockId = formatNotionId(rawBlockId)
     const creds = await getCredentialsOrExit()
-    const result = await handleBlockDelete(creds.token_v2, {
-      block_id: formatNotionId(rawBlockId),
-      workspaceId: options.workspaceId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, blockId)
+    const result = await handleBlockDelete(ctx.tokenV2, {
+      block_id: blockId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -616,16 +625,18 @@ async function deleteAction(rawBlockId: string, options: WorkspaceOptions): Prom
 
 async function uploadAction(
   rawParentId: string,
-  options: { file: string; after?: string; before?: string; workspaceId: string; pretty?: boolean },
+  options: { file: string; after?: string; before?: string; workspaceId?: string; pretty?: boolean },
 ): Promise<void> {
   try {
+    const parentId = formatNotionId(rawParentId)
     const creds = await getCredentialsOrExit()
-    const result = await handleBlockUpload(creds.token_v2, {
-      parent_id: rawParentId,
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, parentId)
+    const result = await handleBlockUpload(ctx.tokenV2, {
+      parent_id: parentId,
       file: options.file,
       after: options.after,
       before: options.before,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -637,13 +648,15 @@ type MoveOptions = WorkspaceOptions & { parent: string; after?: string; before?:
 
 async function moveAction(rawBlockId: string, options: MoveOptions): Promise<void> {
   try {
+    const blockId = formatNotionId(rawBlockId)
     const creds = await getCredentialsOrExit()
-    const result = await handleBlockMove(creds.token_v2, {
-      block_id: formatNotionId(rawBlockId),
+    const ctx = await ensureWorkspaceContext(creds, options.workspaceId, blockId)
+    const result = await handleBlockMove(ctx.tokenV2, {
+      block_id: blockId,
       parent_id: options.parent,
       after: options.after,
       before: options.before,
-      workspaceId: options.workspaceId,
+      workspaceId: ctx.workspaceId,
     })
     console.log(formatOutput(result, options.pretty))
   } catch (error) {
@@ -651,13 +664,15 @@ async function moveAction(rawBlockId: string, options: MoveOptions): Promise<voi
   }
 }
 
+const WORKSPACE_ID_OPTION_DESC = 'Workspace ID (optional; auto-resolved from the target block when omitted)'
+
 export const blockCommand = new Command('block')
   .description('Block commands')
   .addCommand(
     new Command('get')
       .description('Retrieve a block')
       .argument('<block_id>', 'Block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--backlinks', 'Include backlinks (blocks that link to this block)')
       .option('--pretty', 'Pretty print JSON output')
       .action(getAction),
@@ -666,7 +681,7 @@ export const blockCommand = new Command('block')
     new Command('children')
       .description('List block children')
       .argument('<block_id>', 'Block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--limit <n>', 'Number of child blocks to load')
       .option('--start-cursor <json>', 'Pagination cursor from previous response')
       .option('--pretty', 'Pretty print JSON output')
@@ -676,7 +691,7 @@ export const blockCommand = new Command('block')
     new Command('append')
       .description('Append child blocks')
       .argument('<parent_id>', 'Parent block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--content <json>', 'Block definitions as JSON array')
       .option('--markdown <text>', 'Markdown content to convert to blocks')
       .option('--markdown-file <path>', 'Path to markdown file')
@@ -689,7 +704,7 @@ export const blockCommand = new Command('block')
     new Command('update')
       .description('Update a block')
       .argument('<block_id>', 'Block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--content <json>', 'Block update content as JSON object')
       .option('--pretty', 'Pretty print JSON output')
       .action(updateAction),
@@ -698,7 +713,7 @@ export const blockCommand = new Command('block')
     new Command('delete')
       .description('Delete (archive) a block')
       .argument('<block_id>', 'Block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .option('--pretty', 'Pretty print JSON output')
       .action(deleteAction),
   )
@@ -706,7 +721,7 @@ export const blockCommand = new Command('block')
     new Command('upload')
       .description('Upload a file as a block')
       .argument('<parent_id>', 'Parent block ID')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--file <path>', 'Path to file to upload')
       .option('--after <block_id>', 'Insert after this block ID')
       .option('--before <block_id>', 'Insert before this block ID')
@@ -717,7 +732,7 @@ export const blockCommand = new Command('block')
     new Command('move')
       .description('Move a block to a new position')
       .argument('<block_id>', 'Block ID to move')
-      .requiredOption('--workspace-id <id>', 'Workspace ID (use `workspace list` to find it)')
+      .option('--workspace-id <id>', WORKSPACE_ID_OPTION_DESC)
       .requiredOption('--parent <parent_id>', 'Target parent block ID')
       .option('--after <block_id>', 'Place after this block ID')
       .option('--before <block_id>', 'Place before this block ID')
