@@ -75,12 +75,15 @@ vibe-notion page get <page_id> --workspace-id <workspace_id>
 {
   "id": "page-uuid",
   "title": "My Page",
+  "space_id": "workspace-uuid",
   "blocks": [
     { "id": "block-1", "type": "text", "text": "Hello world" },
     { "id": "block-2", "type": "to_do", "text": "Task item" }
   ]
 }
 ```
+
+The `space_id` field identifies the workspace that owns the page. Use it as `--workspace-id` for any follow-up writes.
 
 ```bash
 # With --backlinks: includes pages that link to this page/block
@@ -108,6 +111,7 @@ vibe-notion block get <block_id> --workspace-id <workspace_id>
   "type": "collection_view",
   "text": "",
   "parent_id": "parent-uuid",
+  "space_id": "workspace-uuid",
   "collection_id": "collection-uuid",
   "view_ids": ["view-uuid"]
 }

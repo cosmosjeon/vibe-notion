@@ -216,12 +216,28 @@ describe('formatBlockValue', () => {
       text: 'Hello world',
       content: ['child-1', 'child-2'],
       parent_id: 'parent-1',
+      space_id: 'space-1',
       collection_id: undefined,
       view_ids: undefined,
     })
     expect('version' in result).toBe(false)
-    expect('space_id' in result).toBe(false)
     expect('created_time' in result).toBe(false)
+  })
+
+  test('omits space_id when block has none', () => {
+    // Given
+    const block = {
+      id: 'block-1',
+      type: 'text',
+      properties: { title: [['Hi']] },
+      parent_id: 'parent-1',
+    }
+
+    // When
+    const result = formatBlockValue(block)
+
+    // Then
+    expect('space_id' in result).toBe(false)
   })
 
   test('includes collection_id and view_ids for collection_view blocks', () => {
@@ -532,6 +548,43 @@ describe('formatPageGet', () => {
         },
       ],
     })
+  })
+
+  test('exposes space_id from the root page block', () => {
+    // Given
+    const blocks: Record<string, Record<string, unknown>> = {
+      'page-1': {
+        value: { id: 'page-1', type: 'page', content: [], space_id: 'space-abc' },
+        role: 'editor',
+      },
+    }
+
+    // When
+    const result = formatPageGet(blocks, 'page-1')
+
+    // Then
+    expect(result).toEqual({
+      id: 'page-1',
+      title: '',
+      space_id: 'space-abc',
+      blocks: [],
+    })
+  })
+
+  test('omits space_id when the root page has none', () => {
+    // Given
+    const blocks: Record<string, Record<string, unknown>> = {
+      'page-1': {
+        value: { id: 'page-1', type: 'page', content: [] },
+        role: 'editor',
+      },
+    }
+
+    // When
+    const result = formatPageGet(blocks, 'page-1')
+
+    // Then
+    expect('space_id' in result).toBe(false)
   })
 
   test('skips missing blocks gracefully', () => {
@@ -947,6 +1000,30 @@ describe('formatBlockRecord', () => {
       id: 'nested-1',
       title: 'Nested Page',
       type: 'page',
+    })
+  })
+
+  test('includes space_id when present on the underlying block value', () => {
+    // Given
+    const record = {
+      value: {
+        id: 'page-1',
+        type: 'page',
+        properties: { title: [['Hi']] },
+        space_id: 'space-abc',
+      },
+      role: 'editor',
+    }
+
+    // When
+    const result = formatBlockRecord(record)
+
+    // Then
+    expect(result).toEqual({
+      id: 'page-1',
+      title: 'Hi',
+      type: 'page',
+      space_id: 'space-abc',
     })
   })
 })

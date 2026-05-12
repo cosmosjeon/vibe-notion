@@ -151,7 +151,7 @@ vibe-notionbot page get <page-id> --pretty
 | Command | Description |
 |---------|-------------|
 | `auth` | Extract token from desktop app, check status, logout |
-| `workspace` | List accessible workspaces |
+| `workspace` | List accessible workspaces, resolve workspace ID from a page ID |
 | `page` | Get, list, create, update, archive pages |
 | `database` | Get schema, query, create, update, delete properties, add/update rows, list, manage views |
 | `block` | Get, list children, append (with nested markdown support), update, delete blocks |
@@ -159,7 +159,7 @@ vibe-notionbot page get <page-id> --pretty
 | `search` | Workspace search |
 | `comment` | List, create, and get comments (including inline block-level comments) |
 
-> All commands that operate within a workspace require `--workspace-id`. Use `vibe-notion workspace list` to find yours.
+> All commands that operate within a workspace require `--workspace-id`. Use `vibe-notion workspace list` to find yours, or `vibe-notion workspace resolve <page_id>` to look up the workspace ID when you only have a Notion URL.
 
 ### `vibe-notionbot` (Official API — acts as a bot)
 
