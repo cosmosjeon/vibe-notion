@@ -624,6 +624,65 @@ describe('WorkspaceCommand', () => {
     expect(result.workspace_id).toBe('space-from-url')
   })
 
+  test('workspace resolve strips a hash fragment from a Notion URL', async () => {
+    const seenIds: string[] = []
+    const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
+      if (endpoint === 'syncRecordValues') {
+        const requests = (body as { requests: { pointer: { id: string } }[] }).requests
+        seenIds.push(requests[0].pointer.id)
+        const blockId = requests[0].pointer.id
+        return {
+          recordMap: {
+            block: {
+              [blockId]: { value: { id: blockId, type: 'page', space_id: 'space-from-hash-url' } },
+            },
+          },
+        }
+      }
+      if (endpoint === 'getSpaces') return {}
+    })
+
+    const mockGetCredentials = mock(async () => ({ token_v2: 'primary-token' }))
+
+    mock.module('../client', () => ({
+      internalRequest: mockInternalRequest,
+      setActiveUserId: mock(),
+      getActiveUserId: mock(),
+    }))
+
+    mock.module('./helpers', () => ({
+      getCredentialsOrExit: mockGetCredentials,
+      generateId: mock(() => 'mock-uuid'),
+      resolveSpaceId: mock(async () => 'space-mock'),
+      resolveCollectionViewId: mock(async () => 'view-mock'),
+      resolveAndSetActiveUserId: mock(async () => {}),
+      resolveBacklinkUsers: mock(async () => ({})),
+      resolveDefaultTeamId: mock(async () => undefined),
+    }))
+
+    const { workspaceCommand } = await import('./workspace')
+    const output: string[] = []
+    const originalLog = console.log
+    console.log = (msg: string) => output.push(msg)
+
+    try {
+      await workspaceCommand.parseAsync(
+        ['resolve', 'https://www.notion.so/devxoul/My-Page-12345678123412341234123456789012#some-anchor'],
+        { from: 'user' },
+      )
+    } catch {
+      // Expected to exit
+    }
+
+    console.log = originalLog
+
+    expect(seenIds[0]).toBe('12345678-1234-1234-1234-123456789012')
+    expect(output.length).toBeGreaterThan(0)
+    const result = JSON.parse(output[0])
+    expect(result.page_id).toBe('12345678-1234-1234-1234-123456789012')
+    expect(result.workspace_id).toBe('space-from-hash-url')
+  })
+
   test('workspace resolve probes the collection table for database IDs', async () => {
     const mockInternalRequest = mock(async (_tokenV2: string, endpoint: string, body: unknown) => {
       if (endpoint === 'syncRecordValues') {

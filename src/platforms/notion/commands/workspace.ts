@@ -160,8 +160,8 @@ async function lookupWorkspaceName(token: string, workspaceId: string): Promise<
 function extractPageIdFromInput(input: string): string {
   const trimmed = input.trim()
   if (!trimmed.includes('/')) return trimmed
-  const withoutQuery = trimmed.split('?', 1)[0]
-  const segments = withoutQuery.split('/').filter(Boolean)
+  const withoutQueryOrHash = trimmed.split(/[?#]/, 1)[0]
+  const segments = withoutQueryOrHash.split('/').filter(Boolean)
   const last = segments[segments.length - 1] ?? ''
   const tail = last.includes('-') ? (last.split('-').pop() ?? last) : last
   return tail || trimmed
