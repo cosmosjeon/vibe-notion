@@ -113,7 +113,7 @@ async function listAction(options: PrettyOption & { pageSize?: string; startCurs
   try {
     const client = getClient()
     const params: SearchParameters = {
-      filter: { property: 'object', value: 'database' as unknown as 'page' | 'data_source' },
+      filter: { property: 'object', value: 'data_source' },
     }
 
     if (options.pageSize) {

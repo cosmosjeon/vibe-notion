@@ -315,7 +315,7 @@ describe('database commands', () => {
 
       // Then
       expect(mockSearch).toHaveBeenCalledWith({
-        filter: { property: 'object', value: 'database' },
+        filter: { property: 'object', value: 'data_source' },
       })
       const output = JSON.parse(consoleOutput[0])
       expect(Array.isArray(output)).toBe(true)
@@ -341,7 +341,7 @@ describe('database commands', () => {
 
       // Then
       expect(mockSearch).toHaveBeenCalledWith({
-        filter: { property: 'object', value: 'database' },
+        filter: { property: 'object', value: 'data_source' },
         page_size: 5,
         start_cursor: 'cur-1',
       })
