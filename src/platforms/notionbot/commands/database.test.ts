@@ -309,8 +309,8 @@ describe('database commands', () => {
       // Given
       mockSearch.mockResolvedValue({
         results: [
-          { id: 'db-1', object: 'database', title: [{ plain_text: 'DB 1' }], url: 'https://notion.so/db-1' },
-          { id: 'db-2', object: 'database', title: [{ plain_text: 'DB 2' }], url: 'https://notion.so/db-2' },
+          { id: 'db-1', object: 'data_source', title: [{ plain_text: 'DB 1' }], url: 'https://notion.so/db-1' },
+          { id: 'db-2', object: 'data_source', title: [{ plain_text: 'DB 2' }], url: 'https://notion.so/db-2' },
         ],
         has_more: false,
         next_cursor: null,
@@ -333,8 +333,8 @@ describe('database commands', () => {
       // Given
       mockSearch.mockResolvedValue({
         results: [
-          { id: 'db-1', object: 'database', title: [{ plain_text: 'DB 1' }], url: 'https://notion.so/db-1' },
-          { id: 'db-2', object: 'database', title: [{ plain_text: 'DB 2' }], url: 'https://notion.so/db-2' },
+          { id: 'db-1', object: 'data_source', title: [{ plain_text: 'DB 1' }], url: 'https://notion.so/db-1' },
+          { id: 'db-2', object: 'data_source', title: [{ plain_text: 'DB 2' }], url: 'https://notion.so/db-2' },
         ],
         has_more: false,
         next_cursor: null,
