@@ -13,6 +13,10 @@ mock.module('../client', () => ({
       create: mockCreate,
       update: mockUpdate,
     },
+    dataSources: {
+      retrieve: mockRetrieve,
+      update: mockUpdate,
+    },
     request: mockRequest,
     search: mockSearch,
   }),
@@ -69,7 +73,7 @@ describe('database commands', () => {
       await databaseCommand.parseAsync(['get', 'db-123'], { from: 'user' })
 
       // Then
-      expect(mockRetrieve).toHaveBeenCalledWith({ database_id: 'db-123' })
+      expect(mockRetrieve).toHaveBeenCalledWith({ data_source_id: 'db-123' })
       const output = JSON.parse(consoleOutput[0])
       expect(output.id).toBe('db-123')
       expect(output.title).toBe('My Database')
@@ -115,7 +119,7 @@ describe('database commands', () => {
       // Then
       expect(mockRequest).toHaveBeenCalledWith({
         method: 'post',
-        path: 'databases/db-123/query',
+        path: 'data_sources/db-123/query',
         body: {},
       })
       const output = JSON.parse(consoleOutput[0])
@@ -149,7 +153,7 @@ describe('database commands', () => {
       // Then
       expect(mockRequest).toHaveBeenCalledWith({
         method: 'post',
-        path: 'databases/db-123/query',
+        path: 'data_sources/db-123/query',
         body: {
           filter: { property: 'Status', select: { equals: 'Done' } },
           sorts: [{ property: 'Created', direction: 'descending' }],
@@ -184,7 +188,7 @@ describe('database commands', () => {
         body: {
           parent: { type: 'page_id', page_id: 'page-1' },
           title: [{ type: 'text', text: { content: 'Tasks' } }],
-          properties: { Name: { title: {} } },
+          initial_data_source: { properties: { Name: { title: {} } } },
         },
       })
       const output = JSON.parse(consoleOutput[0])
@@ -219,7 +223,9 @@ describe('database commands', () => {
         body: {
           parent: { type: 'page_id', page_id: 'page-1' },
           title: [{ type: 'text', text: { content: 'Tasks' } }],
-          properties: { Name: { title: {} }, Status: { select: { options: [{ name: 'Done' }] } } },
+          initial_data_source: {
+            properties: { Name: { title: {} }, Status: { select: { options: [{ name: 'Done' }] } } },
+          },
         },
       })
     })
@@ -242,7 +248,7 @@ describe('database commands', () => {
 
       // Then
       expect(mockRequest).toHaveBeenCalledWith({
-        path: 'databases/db-123',
+        path: 'data_sources/db-123',
         method: 'patch',
         body: {
           title: [{ type: 'text', text: { content: 'Updated' } }],
@@ -271,7 +277,7 @@ describe('database commands', () => {
 
       // Then
       expect(mockRequest).toHaveBeenCalledWith({
-        path: 'databases/db-123',
+        path: 'data_sources/db-123',
         method: 'patch',
         body: {
           properties: { Status: null },

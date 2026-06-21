@@ -28,6 +28,14 @@ const mockDatabases = {
   update: mock(() => Promise.resolve({})),
 }
 
+const mockDataSources = {
+  retrieve: mock(() => Promise.resolve({})),
+  query: mock(() => Promise.resolve({ results: [] })),
+  create: mock(() => Promise.resolve({})),
+  update: mock(() => Promise.resolve({})),
+  listTemplates: mock(() => Promise.resolve({ results: [] })),
+}
+
 const mockUsers = {
   retrieve: mock(() => Promise.resolve({})),
   list: mock(() => Promise.resolve({ results: [] })),
@@ -53,6 +61,7 @@ function createMockSDK() {
     blocks: mockBlocks,
     pages: mockPages,
     databases: mockDatabases,
+    dataSources: mockDataSources,
     users: mockUsers,
     comments: mockComments,
     fileUploads: mockFileUploads,
@@ -61,7 +70,7 @@ function createMockSDK() {
 }
 
 function resetMocks() {
-  for (const group of [mockBlocks, mockPages, mockDatabases, mockUsers, mockComments, mockFileUploads]) {
+  for (const group of [mockBlocks, mockPages, mockDatabases, mockDataSources, mockUsers, mockComments, mockFileUploads]) {
     for (const val of Object.values(group)) {
       if (typeof val === 'object' && val !== null) {
         for (const fn of Object.values(val)) {
@@ -92,13 +101,14 @@ describe('NotionClient', () => {
   })
 
   describe('exposed SDK methods', () => {
-    test('exposes pages, databases, blocks, users, search, comments, fileUploads', () => {
+    test('exposes pages, databases, dataSources, blocks, users, search, comments, fileUploads', () => {
       // Given
       const client = new NotionClient('ntn_test123')
 
       // Then
       expect(client.pages).toBeDefined()
       expect(client.databases).toBeDefined()
+      expect(client.dataSources).toBeDefined()
       expect(client.blocks).toBeDefined()
       expect(client.users).toBeDefined()
       expect(client.search).toBeDefined()

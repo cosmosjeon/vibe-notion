@@ -111,7 +111,7 @@ export async function handlePageCreate(
   args: { parent: string; title: string; database?: boolean; markdown?: string; markdownFile?: string },
 ): Promise<unknown> {
   const parentId = formatNotionId(args.parent)
-  const parent = args.database ? { database_id: parentId } : { page_id: parentId }
+  const parent = args.database ? { data_source_id: parentId } : { page_id: parentId }
 
   const page = await client.pages.create({
     parent,

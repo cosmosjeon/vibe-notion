@@ -198,7 +198,7 @@ describe('page commands', () => {
         url: 'https://notion.so/new-page-789',
         archived: false,
         last_edited_time: '2024-01-01T00:00:00.000Z',
-        parent: { type: 'database_id', database_id: 'db-123' },
+        parent: { type: 'data_source_id', data_source_id: 'db-123' },
         properties: {
           Name: { id: 'title', type: 'title', title: [{ plain_text: 'DB Entry' }] },
         },
@@ -211,7 +211,7 @@ describe('page commands', () => {
 
       // Then
       expect(mockPageCreate).toHaveBeenCalledWith({
-        parent: { database_id: 'db-123' },
+        parent: { data_source_id: 'db-123' },
         properties: {
           title: { title: [{ text: { content: 'DB Entry' } }] },
         },

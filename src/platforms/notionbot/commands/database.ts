@@ -15,7 +15,7 @@ async function getAction(rawDatabaseId: string, options: PrettyOption): Promise<
   const databaseId = formatNotionId(rawDatabaseId)
   try {
     const client = getClient()
-    const result = await client.databases.retrieve({ database_id: databaseId })
+    const result = await client.dataSources.retrieve({ data_source_id: databaseId })
     console.log(formatOutput(formatDatabase(result as Record<string, unknown>), options.pretty))
   } catch (error) {
     handleError(error as Error)
@@ -51,7 +51,7 @@ async function queryAction(
 
     const result = await client.request({
       method: 'post',
-      path: `databases/${databaseId}/query`,
+      path: `data_sources/${databaseId}/query`,
       body,
     })
     console.log(formatOutput(formatDatabaseQueryResults(result as Record<string, unknown>), options.pretty))
@@ -141,16 +141,13 @@ export async function handleDatabaseCreate(
   )
   const properties = hasTitleProperty ? parsed : { Name: { title: {} }, ...parsed }
 
-  // Bypass SDK — databases.create in @notionhq/client v5+ strips `properties`
-  // from body params, causing Notion API to reject the request.
-  // See: https://github.com/makenotion/notion-sdk-js/issues/618
   const result = await client.request({
     path: 'databases',
     method: 'post',
     body: {
       parent: { type: 'page_id', page_id: parentId },
       title: [{ type: 'text', text: { content: args.title } }],
-      properties,
+      initial_data_source: { properties },
     },
   })
   return formatDatabase(result as Record<string, unknown>)
@@ -170,9 +167,8 @@ export async function handleDatabaseUpdate(
     body.properties = JSON.parse(args.properties)
   }
 
-  // Bypass SDK — same issue as handleDatabaseCreate (properties stripped from body)
   const result = await client.request({
-    path: `databases/${databaseId}`,
+    path: `data_sources/${databaseId}`,
     method: 'patch',
     body,
   })
@@ -185,7 +181,7 @@ export async function handleDatabaseDeleteProperty(
 ): Promise<unknown> {
   const databaseId = formatNotionId(args.database_id)
   const result = await client.request({
-    path: `databases/${databaseId}`,
+    path: `data_sources/${databaseId}`,
     method: 'patch',
     body: {
       properties: { [args.property]: null },

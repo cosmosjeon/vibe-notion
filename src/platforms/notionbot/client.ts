@@ -21,6 +21,10 @@ export class NotionClient {
     return this.sdk.databases
   }
 
+  get dataSources() {
+    return this.sdk.dataSources
+  }
+
   get blocks() {
     return this.sdk.blocks
   }
